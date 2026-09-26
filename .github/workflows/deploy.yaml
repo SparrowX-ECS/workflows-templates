@@ -61,15 +61,15 @@ jobs:
       - name: Load database configuration
         if: inputs.database-enabled
         run: |
+          echo "DATABASE_ENABLED=$(yq -r '.database.enabled' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "DATABASE_STACK=$(yq -r '.database.stack' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_HOST_CONFIG=$(yq -r '.database.hostConfig' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_PORT_CONFIG=$(yq -r '.database.portConfig' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_HOST_CONFIG=$(yq -r '.database.endpoint' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_PORT_CONFIG=$(yq -r '.database.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "DATABASE_NAME=$(yq -r '.database.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-
-          echo "DATABASE_ENDPOINT_OUTPUT=$(yq -r '.database.endpointOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_PORT_OUTPUT=$(yq -r '.database.portOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_SECRET_OUTPUT=$(yq -r '.database.secretOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_SECURITY_GROUP_OUTPUT=$(yq -r '.database.securityGroupOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_ENDPOINT_OUTPUT=$(yq -r '.database.outputs.endpoint' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_PORT_OUTPUT=$(yq -r '.database.outputs.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_SECRET_OUTPUT=$(yq -r '.database.outputs.secret_arn' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_SECURITY_GROUP_OUTPUT=$(yq -r '.database.outputs.security_group_id' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -89,38 +89,32 @@ jobs:
         run: |
           echo "Resolving database outputs from stack: $DATABASE_STACK"
 
-          DATABASE_ENDPOINT=$(
+          stack_output() {
             aws cloudformation describe-stacks \
+              --region "$AWS_REGION" \
               --stack-name "$DATABASE_STACK" \
-              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_ENDPOINT_OUTPUT'].OutputValue" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
               --output text
-          )
+          }
 
-          DATABASE_PORT=$(
-            aws cloudformation describe-stacks \
-              --stack-name "$DATABASE_STACK" \
-              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_PORT_OUTPUT'].OutputValue" \
-              --output text
-          )
+          DATABASE_HOST="$DATABASE_HOST_CONFIG"
+          DATABASE_PORT="$DATABASE_PORT_CONFIG"
 
-          DATABASE_SECRET=$(
-            aws cloudformation describe-stacks \
-              --stack-name "$DATABASE_STACK" \
-              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_SECRET_OUTPUT'].OutputValue" \
-              --output text
-          )
+          [ -n "$DATABASE_HOST" ] || \
+            DATABASE_HOST="$(stack_output "$DATABASE_ENDPOINT_OUTPUT")"
 
-          DATABASE_SECURITY_GROUP=$(
-            aws cloudformation describe-stacks \
-              --stack-name "$DATABASE_STACK" \
-              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_SECURITY_GROUP_OUTPUT'].OutputValue" \
-              --output text
-          )
+          [ -n "$DATABASE_PORT" ] || \
+            DATABASE_PORT="$(stack_output "$DATABASE_PORT_OUTPUT")"
 
-          echo "DATABASE_ENDPOINT=$DATABASE_ENDPOINT" >> "$GITHUB_ENV"
-          echo "DATABASE_PORT=$DATABASE_PORT" >> "$GITHUB_ENV"
-          echo "DATABASE_SECRET=$DATABASE_SECRET" >> "$GITHUB_ENV"
-          echo "DATABASE_SECURITY_GROUP=$DATABASE_SECURITY_GROUP" >> "$GITHUB_ENV"
+          DATABASE_SECRET_ARN="$(stack_output "$DATABASE_SECRET_OUTPUT")"
+          DATABASE_SECURITY_GROUP_ID="$(stack_output "$DATABASE_SECURITY_GROUP_OUTPUT")"
+
+          {
+            echo "DATABASE_HOST=$DATABASE_HOST"
+            echo "DATABASE_PORT=$DATABASE_PORT"
+            echo "DATABASE_SECRET_ARN=$DATABASE_SECRET_ARN"
+            echo "DATABASE_SECURITY_GROUP_ID=$DATABASE_SECURITY_GROUP_ID"
+          } >> "$GITHUB_ENV"
 
       - name: Deploy ECS service
         env:
@@ -175,10 +169,6 @@ jobs:
             --parameter-overrides "${parameters[@]}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --region "$AWS_REGION"
-
-      # --------------------------------------------------
-      # Summary
-      # --------------------------------------------------
 
       - name: Add deployment summary
         if: always()
