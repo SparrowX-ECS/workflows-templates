@@ -144,13 +144,13 @@ jobs:
             parameters+=("BillingApiUrl=$BILLING_API_URL")
           fi
 
-          if [[ "${{ inputs.database-enabled }}" == "true" ]]; then
+          if [ "$DATABASE_ENABLED" = true ]; then
             parameters+=(
-              "DatabaseHost=$DATABASE_ENDPOINT"
+              "DatabaseSecretArn=$DATABASE_SECRET_ARN"
+              "DatabaseSecurityGroupId=$DATABASE_SECURITY_GROUP_ID"
+              "DatabaseHost=$DATABASE_HOST"
               "DatabasePort=$DATABASE_PORT"
               "DatabaseName=$DATABASE_NAME"
-              "DatabaseSecretArn=$DATABASE_SECRET"
-              "DatabaseSecurityGroupId=$DATABASE_SECURITY_GROUP"
             )
           fi
 
