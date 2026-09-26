@@ -1,0 +1,221 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      database-enabled:
+        description: Whether the service uses a database
+        required: false
+        type: boolean
+        default: false
+
+      update-image:
+        description: Whether to deploy a new image tag
+        required: false
+        type: boolean
+        default: false
+      
+      job-name:
+        description: Display name for the deployment job
+        required: false
+        type: string
+        default: Deploy
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: ${{ inputs.job-name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        uses: mikefarah/yq@v4.48.2
+
+      - name: Load service configuration
+        run: |
+          echo "ENVIRONMENT_NAME=$(yq -r '.environment.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "SERVICE_NAME=$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "STACK_NAME=$(yq -r '.service.stack' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "CPU=$(yq -r '.container.cpu' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "MEMORY=$(yq -r '.container.memory' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "DESIRED_COUNT=$(yq -r '.deployment.desiredCount' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "PATH_PATTERN=$(yq -r '.loadBalancer.pathPattern' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "LISTENER_PRIORITY=$(yq -r '.loadBalancer.listenerRulePriority' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "HEALTH_CHECK_PATH=$(yq -r '.loadBalancer.healthCheckPath' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "CUSTOMER_API_URL=$(yq -r '.upstream.customerApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "TASK_API_URL=$(yq -r '.upstream.taskApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "BILLING_API_URL=$(yq -r '.upstream.billingApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+      
+      - name: Load database configuration
+        if: inputs.database-enabled
+        run: |
+          echo "DATABASE_STACK=$(yq -r '.database.stack' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_HOST_CONFIG=$(yq -r '.database.hostConfig' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_PORT_CONFIG=$(yq -r '.database.portConfig' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_NAME=$(yq -r '.database.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "DATABASE_ENDPOINT_OUTPUT=$(yq -r '.database.endpointOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_PORT_OUTPUT=$(yq -r '.database.portOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_SECRET_OUTPUT=$(yq -r '.database.secretOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_SECURITY_GROUP_OUTPUT=$(yq -r '.database.securityGroupOutput' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/cloudformation-github-actions
+          aws-region: eu-west-1
+
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v4
+        with:
+          repository: SparrowX-ECS/ecs-infrastructure
+          ref: main
+          path: ecs-infrastructure
+
+      - name: Resolve database configuration
+        if: inputs.database-enabled
+        run: |
+          echo "Resolving database outputs from stack: $DATABASE_STACK"
+
+          DATABASE_ENDPOINT=$(
+            aws cloudformation describe-stacks \
+              --stack-name "$DATABASE_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_ENDPOINT_OUTPUT'].OutputValue" \
+              --output text
+          )
+
+          DATABASE_PORT=$(
+            aws cloudformation describe-stacks \
+              --stack-name "$DATABASE_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_PORT_OUTPUT'].OutputValue" \
+              --output text
+          )
+
+          DATABASE_SECRET=$(
+            aws cloudformation describe-stacks \
+              --stack-name "$DATABASE_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_SECRET_OUTPUT'].OutputValue" \
+              --output text
+          )
+
+          DATABASE_SECURITY_GROUP=$(
+            aws cloudformation describe-stacks \
+              --stack-name "$DATABASE_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$DATABASE_SECURITY_GROUP_OUTPUT'].OutputValue" \
+              --output text
+          )
+
+          echo "DATABASE_ENDPOINT=$DATABASE_ENDPOINT" >> "$GITHUB_ENV"
+          echo "DATABASE_PORT=$DATABASE_PORT" >> "$GITHUB_ENV"
+          echo "DATABASE_SECRET=$DATABASE_SECRET" >> "$GITHUB_ENV"
+          echo "DATABASE_SECURITY_GROUP=$DATABASE_SECURITY_GROUP" >> "$GITHUB_ENV"
+
+      - name: Deploy ECS service
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          parameters=(
+            "EnvironmentName=$ENVIRONMENT_NAME"
+            "ServiceName=$SERVICE_NAME"
+            "ContainerPort=$CONTAINER_PORT"
+            "Cpu=$CPU"
+            "Memory=$MEMORY"
+            "DesiredCount=$DESIRED_COUNT"
+            "PathPattern=$PATH_PATTERN"
+            "ListenerRulePriority=$LISTENER_PRIORITY"
+            "HealthCheckPath=$HEALTH_CHECK_PATH"
+          )
+
+          if [[ -n "$CUSTOMER_API_URL" ]]; then
+            parameters+=("CustomerApiUrl=$CUSTOMER_API_URL")
+          fi
+
+          if [[ -n "$TASK_API_URL" ]]; then
+            parameters+=("TaskApiUrl=$TASK_API_URL")
+          fi
+
+          if [[ -n "$BILLING_API_URL" ]]; then
+            parameters+=("BillingApiUrl=$BILLING_API_URL")
+          fi
+
+          if [[ "${{ inputs.database-enabled }}" == "true" ]]; then
+            parameters+=(
+              "DatabaseHost=$DATABASE_ENDPOINT"
+              "DatabasePort=$DATABASE_PORT"
+              "DatabaseName=$DATABASE_NAME"
+              "DatabaseSecretArn=$DATABASE_SECRET"
+              "DatabaseSecurityGroupId=$DATABASE_SECURITY_GROUP"
+            )
+          fi
+
+          if [[ "${{ inputs.update-image }}" == "true" ]]; then
+            parameters+=("ImageTag=$IMAGE_TAG")
+          fi
+
+          echo "Deploying stack: $STACK_NAME"
+          echo "Service: $SERVICE_NAME"
+          echo "Image update: ${{ inputs.update-image }}"
+          echo "Database enabled: ${{ inputs.database-enabled }}"
+
+          aws cloudformation deploy \
+            --template-file ecs-infrastructure/cloudformation/service.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides "${parameters[@]}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "$AWS_REGION"
+
+      # --------------------------------------------------
+      # Summary
+      # --------------------------------------------------
+
+      - name: Add deployment summary
+        if: always()
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          {
+            echo "## ECS deployment"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Service | \`$SERVICE_NAME\` |"
+            echo "| Stack | \`$STACK_NAME\` |"
+            echo "| Environment | \`$ENVIRONMENT_NAME\` |"
+            echo "| ECR repository | \`$ECR_REPOSITORY\` |"
+            echo "| Image tag updated | \`${{ inputs.update-image }}\` |"
+            if [[ "${{ inputs.update-image }}" == "true" ]]; then
+              echo "| Image tag | \`$IMAGE_TAG\` |"
+            fi
+            echo "| Database enabled | \`${{ inputs.database-enabled }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show stack outputs
+        if: success()
+        run: |
+          echo "## CloudFormation stack outputs"
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+            --output table
+
+      - name: Show stack events on failure
+        if: failure()
+        run: |
+          echo "## Recent CloudFormation stack events"
+
+          aws cloudformation describe-stack-events \
+            --stack-name "$STACK_NAME" \
+            --query 'StackEvents[:20].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]' \
+            --output table

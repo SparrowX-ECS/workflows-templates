@@ -1,0 +1,111 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      frontend:
+        description: Whether this is a frontend build
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        uses: mikefarah/yq@v4.48.2
+
+      - name: Load image configuration
+        run: |
+          echo "ECR_REPOSITORY=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+      - name: Load frontend configuration
+        if: inputs.frontend
+        run: |
+          echo "API_BASE_URL=$(yq -r '.frontend.apiBaseUrl' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/cloudformation-github-actions
+          aws-region: eu-west-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check whether image exists in ECR
+        id: image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set +e
+          describe_output=$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids "imageTag=$IMAGE_TAG" \
+            --region "$AWS_REGION" 2>&1)
+          describe_status=$?
+          set -e
+
+          if [ "$describe_status" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image already exists; skipping build and push."
+          elif grep -q "ImageNotFoundException" <<< "$describe_output"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image does not exist; it will be built and pushed."
+          else
+            echo "$describe_output"
+            exit "$describe_status"
+          fi
+
+      - name: Build Docker image
+        if: steps.image.outputs.exists != 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [ "${{ inputs.frontend }}" = "true" ]; then
+            docker build \
+              --build-arg VITE_API_BASE_URL="$API_BASE_URL" \
+              -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+              .
+          else
+            docker build \
+              -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+              .
+          fi
+
+      - name: Push Docker image
+        if: steps.image.outputs.exists != 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Add build summary
+        if: always()
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          {
+            echo "## Build"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| ECR repository | `$ECR_REPOSITORY` |"
+            echo "| Image tag | `$IMAGE_TAG` |"
+            if [ "${{ inputs.frontend }}" = "true" ]; then
+              echo "| API base URL | `$API_BASE_URL` |"
+            fi
+            echo "| Image existed before build | `${{ steps.image.outputs.exists || 'unknown' }}` |"
+          } >> "$GITHUB_STEP_SUMMARY"

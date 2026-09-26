@@ -1,0 +1,43 @@
+name: Detect Changes
+
+on:
+  workflow_call:
+    outputs:
+      code:
+        description: Whether application code changed
+        value: ${{ jobs.changes.outputs.code }}
+
+      deploy:
+        description: Whether deployment-relevant files changed
+        value: ${{ jobs.changes.outputs.deploy }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'Dockerfile'
+
+            deploy:
+              - 'src/**'
+              - 'Dockerfile'
+              - 'ecs-parameters.yaml'
+              - '.github/workflows/deploy.yaml'
