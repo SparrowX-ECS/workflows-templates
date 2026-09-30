@@ -14,12 +14,6 @@ on:
         required: false
         type: boolean
         default: false
-      
-      job-name:
-        description: Display name for the deployment job
-        required: false
-        type: string
-        default: Deploy
 
 permissions:
   contents: read
@@ -27,7 +21,6 @@ permissions:
 
 jobs:
   deploy:
-    name: ${{ inputs.job-name }}
     runs-on: ubuntu-latest
 
     steps:
