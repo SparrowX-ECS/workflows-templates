@@ -161,6 +161,53 @@ jobs:
           echo "DATABASE_SECRET_ARN=$DATABASE_SECRET_ARN"
           echo "DATABASE_SECURITY_GROUP_ID=$DATABASE_SECURITY_GROUP_ID"
 
+      - name: Cleanup stale CloudFormation stack
+        run: |
+          echo "Checking CloudFormation stack: $SERVICE_STACK_NAME"
+
+          STACK_STATUS="$(
+            aws cloudformation describe-stacks \
+              --region "$AWS_REGION" \
+              --stack-name "$SERVICE_STACK_NAME" \
+              --query 'Stacks[0].StackStatus' \
+              --output text 2>/dev/null || true
+          )"
+
+          if [ -z "$STACK_STATUS" ] || [ "$STACK_STATUS" = "None" ]; then
+            echo "Stack does not exist. Nothing to clean up."
+            exit 0
+          fi
+
+          echo "Current stack status: $STACK_STATUS"
+
+          case "$STACK_STATUS" in
+            ROLLBACK_COMPLETE|DELETE_COMPLETE|UPDATE_ROLLBACK_COMPLETE)
+              echo "Stack is in a terminal state that may prevent deployment."
+              echo "Deleting stale stack: $SERVICE_STACK_NAME"
+
+              aws cloudformation delete-stack \
+                --region "$AWS_REGION" \
+                --stack-name "$SERVICE_STACK_NAME"
+
+              echo "Waiting for stack deletion..."
+
+              aws cloudformation wait stack-delete-complete \
+                --region "$AWS_REGION" \
+                --stack-name "$SERVICE_STACK_NAME"
+
+              echo "Stack deleted successfully."
+              ;;
+
+            CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS)
+              echo "Stack is usable. No cleanup required."
+              ;;
+
+            *)
+              echo "Stack is currently in state: $STACK_STATUS"
+              echo "No automatic deletion will be performed."
+              ;;
+          esac
+
       - name: Deploy ECS service
         env:
           IMAGE_TAG: ${{ github.sha }}
