@@ -45,7 +45,7 @@ jobs:
           echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
-          echo "STACK_NAME=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "SERVICE_STACK_NAME=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.image.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
           echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
@@ -164,7 +164,7 @@ jobs:
             parameters+=("ImageTag=$IMAGE_TAG")
           fi
 
-          echo "Deploying stack: $STACK_NAME"
+          echo "Deploying stack: $SERVICE_STACK_NAME"
           echo "Service: $SERVICE_NAME"
           echo "ECRRepo: $ECR_REPOSITORY_FULL_NAME"
           echo "Image update: ${{ inputs.update-image }}"
@@ -172,7 +172,7 @@ jobs:
 
           aws cloudformation deploy \
             --template-file ecs-infrastructure/cloudformation/service.yaml \
-            --stack-name "$STACK_NAME" \
+            --stack-name "$SERVICE_STACK_NAME" \
             --parameter-overrides "${parameters[@]}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --region "$AWS_REGION"
@@ -188,7 +188,7 @@ jobs:
             echo "| Item | Value |"
             echo "|---|---|"
             echo "| Service | \`$SERVICE_NAME\` |"
-            echo "| Stack | \`$STACK_NAME\` |"
+            echo "| Stack | \`$SERVICE_STACK_NAME\` |"
             echo "| Environment | \`$ENVIRONMENT_NAME\` |"
             echo "| ECR repository | \`$ECR_REPOSITORY_FULL_NAME\` |"
             echo "| Image tag updated | \`${{ inputs.update-image }}\` |"
@@ -203,7 +203,7 @@ jobs:
         run: |
           echo "## CloudFormation stack outputs"
           aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
+            --stack-name "$SERVICE_STACK_NAME" \
             --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
             --output table
 
@@ -213,6 +213,6 @@ jobs:
           echo "## Recent CloudFormation stack events"
 
           aws cloudformation describe-stack-events \
-            --stack-name "$STACK_NAME" \
+            --stack-name "$SERVICE_STACK_NAME" \
             --query 'StackEvents[:20].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]' \
             --output table
