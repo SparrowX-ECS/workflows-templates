@@ -49,8 +49,7 @@ jobs:
           echo "ECR_REPOSITORY_FULL_NAME='$(ECR_REPOSITORY_NAMESPACE)/$(ECR_REPOSITORY_NAME)'" >> "$GITHUB_ENV"
 
           echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "CPU=$(yq -r '.container.cpu' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "MEMORY=$(yq -r '.container.memory' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "SIZE=$(yq -r '.container.size' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
           echo "DESIRED_COUNT=$(yq -r '.deployment.desiredCount' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
@@ -125,8 +124,7 @@ jobs:
             "EnvironmentName=$ENVIRONMENT_NAME"
             "ServiceName=$SERVICE_NAME"
             "ContainerPort=$CONTAINER_PORT"
-            "Cpu=$CPU"
-            "Memory=$MEMORY"
+            "Size=$SIZE"
             "DesiredCount=$DESIRED_COUNT"
             "PathPattern=$PATH_PATTERN"
             "ListenerRulePriority=$LISTENER_PRIORITY"
