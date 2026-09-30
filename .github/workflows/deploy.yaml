@@ -45,8 +45,8 @@ jobs:
           echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
-          echo "STACK_NAME='$(PROJECT_NAME)-$(ENVIRONMENT_NAME)-$(SERVICE_NAME)'" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_FULL_NAME='$(ECR_REPOSITORY_NAMESPACE)/$(ECR_REPOSITORY_NAME)'" >> "$GITHUB_ENV"
+          echo "STACK_NAME=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.service.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
           echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "SIZE=$(yq -r '.container.size' ecs-parameters.yaml)" >> "$GITHUB_ENV"
@@ -64,7 +64,7 @@ jobs:
       - name: Load database configuration
         if: inputs.database-enabled
         run: |
-          echo "ROOT_STACK='$(PROJECT_NAME)-$(ENVIRONMENT_NAME)-root-stack'" >> "$GITHUB_ENV"
+          echo "ROOT_STACK=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-root-stack" >> "$GITHUB_ENV"
 
           echo "DATABASE_ENABLED=$(yq -r '.database.enabled' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "DATABASE_HOST_CONFIG=$(yq -r '.database.endpoint' ecs-parameters.yaml)" >> "$GITHUB_ENV"

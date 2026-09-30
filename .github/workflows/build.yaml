@@ -27,11 +27,7 @@ jobs:
 
       - name: Load image configuration
         run: |
-          echo "ENVIRONMENT_NAME=$(yq -r '.project.environment' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "PROJECT_NAME=$(yq -r '.project.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_FULL_NAME='$(ECR_REPOSITORY_NAMESPACE)/$(ECR_REPOSITORY_NAME)'" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.service.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
       - name: Load frontend configuration
         if: inputs.frontend
