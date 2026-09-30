@@ -60,6 +60,8 @@ jobs:
           echo "CUSTOMER_API_URL=$(yq -r '.upstream.customerApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "TASK_API_URL=$(yq -r '.upstream.taskApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "BILLING_API_URL=$(yq -r '.upstream.billingApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "CORS_ALLOW_ORIGINS=$(yq -r '.frontend.corsAllowOrigins // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
       
       - name: Load database configuration
         if: inputs.database-enabled
@@ -123,6 +125,7 @@ jobs:
           parameters=(
             "EnvironmentName=$ENVIRONMENT_NAME"
             "ServiceName=$SERVICE_NAME"
+            "ECRRepoName=$ECR_REPOSITORY_FULL_NAME"
             "ContainerPort=$CONTAINER_PORT"
             "Size=$SIZE"
             "DesiredCount=$DESIRED_COUNT"
@@ -143,6 +146,10 @@ jobs:
             parameters+=("BillingApiUrl=$BILLING_API_URL")
           fi
 
+          if [[ -n "$CORS_ALLOW_ORIGINS" ]]; then
+            parameters+=("CorsAllowOrigins=$CORS_ALLOW_ORIGINS")
+          fi
+
           if [ "$DATABASE_ENABLED" = true ]; then
             parameters+=(
               "DatabaseSecretArn=$DATABASE_SECRET_ARN"
@@ -159,6 +166,7 @@ jobs:
 
           echo "Deploying stack: $STACK_NAME"
           echo "Service: $SERVICE_NAME"
+          echo "ECRRepo: $ECR_REPOSITORY_FULL_NAME"
           echo "Image update: ${{ inputs.update-image }}"
           echo "Database enabled: ${{ inputs.database-enabled }}"
 
