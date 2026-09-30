@@ -10,6 +10,10 @@ on:
       deploy:
         description: Whether deployment-relevant files changed
         value: ${{ jobs.changes.outputs.deploy }}
+      
+      ecrEmpty:
+        description: Whether the ECR repository is empty
+        value: ${{ jobs.changes.outputs.ecrEmpty }}
 
 permissions:
   contents: read
@@ -22,6 +26,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       deploy: ${{ steps.filter.outputs.deploy }}
+      ecrEmpty: ${{ steps.ecr.outputs.empty }}
 
     steps:
       - name: Checkout
@@ -41,3 +46,32 @@ jobs:
               - 'Dockerfile'
               - 'ecs-parameters.yaml'
               - '.github/workflows/deploy.yaml'
+      
+      - name: Load image configuration
+        run: |
+          echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME='$(ECR_REPOSITORY_NAMESPACE)/$(ECR_REPOSITORY_NAME)'" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars.AWS_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+
+      - name: Check ECR repository
+        id: ecr
+        run: |
+          IMAGE_COUNT=$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY_FULL_NAME" \
+            --query 'length(imageDetails)' \
+            --output text)
+
+          if [ "$IMAGE_COUNT" -eq 0 ]; then
+            echo "ECR repository is empty."
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ECR repository contains $IMAGE_COUNT image(s)."
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+          fi
