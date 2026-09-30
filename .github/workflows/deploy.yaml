@@ -215,7 +215,7 @@ jobs:
           parameters=(
             "EnvironmentName=$ENVIRONMENT_NAME"
             "ServiceName=$SERVICE_NAME"
-            "ECRRepoName=$ECR_REPOSITORY_FULL_NAME"
+            "ECRRepoFullName=$ECR_REPOSITORY_FULL_NAME"
             "ContainerPort=$CONTAINER_PORT"
             "Size=$SIZE"
             "DesiredCount=$DESIRED_COUNT"
