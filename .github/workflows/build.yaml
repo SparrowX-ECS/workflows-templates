@@ -27,7 +27,11 @@ jobs:
 
       - name: Load image configuration
         run: |
-          echo "ECR_REPOSITORY=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ENVIRONMENT_NAME=$(yq -r '.project.environment' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "PROJECT_NAME=$(yq -r '.project.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME='$(ECR_REPOSITORY_NAMESPACE)/$(ECR_REPOSITORY_NAME)'" >> "$GITHUB_ENV"
 
       - name: Load frontend configuration
         if: inputs.frontend
@@ -51,7 +55,7 @@ jobs:
         run: |
           set +e
           describe_output=$(aws ecr describe-images \
-            --repository-name "$ECR_REPOSITORY" \
+            --repository-name "$ECR_REPOSITORY_FULL_NAME" \
             --image-ids "imageTag=$IMAGE_TAG" \
             --region "$AWS_REGION" 2>&1)
           describe_status=$?
@@ -77,11 +81,11 @@ jobs:
           if [ "${{ inputs.frontend }}" = "true" ]; then
             docker build \
               --build-arg VITE_API_BASE_URL="$API_BASE_URL" \
-              -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+              -t "$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME:$IMAGE_TAG" \
               .
           else
             docker build \
-              -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+              -t "$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME:$IMAGE_TAG" \
               .
           fi
 
@@ -90,7 +94,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
-        run: docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        run: docker push "$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME:$IMAGE_TAG"
 
       - name: Add build summary
         if: always()
@@ -102,7 +106,7 @@ jobs:
             echo
             echo "| Item | Value |"
             echo "|---|---|"
-            echo "| ECR repository | `$ECR_REPOSITORY` |"
+            echo "| ECR repository | `$ECR_REPOSITORY_FULL_NAME` |"
             echo "| Image tag | `$IMAGE_TAG` |"
             if [ "${{ inputs.frontend }}" = "true" ]; then
               echo "| API base URL | `$API_BASE_URL` |"

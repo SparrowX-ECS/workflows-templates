@@ -39,10 +39,14 @@ jobs:
 
       - name: Load service configuration
         run: |
-          echo "ENVIRONMENT_NAME=$(yq -r '.environment.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ENVIRONMENT_NAME=$(yq -r '.project.environment' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "PROJECT_NAME=$(yq -r '.project.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "SERVICE_NAME=$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "STACK_NAME=$(yq -r '.service.stack' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+
+          echo "STACK_NAME='$(PROJECT_NAME)-$(ENVIRONMENT_NAME)-$(SERVICE_NAME)'" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME='$(ECR_REPOSITORY_NAMESPACE)/$(ECR_REPOSITORY_NAME)'" >> "$GITHUB_ENV"
 
           echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "CPU=$(yq -r '.container.cpu' ecs-parameters.yaml)" >> "$GITHUB_ENV"
@@ -61,15 +65,12 @@ jobs:
       - name: Load database configuration
         if: inputs.database-enabled
         run: |
+          echo "ROOT_STACK='$(PROJECT_NAME)-$(ENVIRONMENT_NAME)-root-stack'" >> "$GITHUB_ENV"
+
           echo "DATABASE_ENABLED=$(yq -r '.database.enabled' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_STACK=$(yq -r '.database.stack' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "DATABASE_HOST_CONFIG=$(yq -r '.database.endpoint' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "DATABASE_PORT_CONFIG=$(yq -r '.database.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "DATABASE_NAME=$(yq -r '.database.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_ENDPOINT_OUTPUT=$(yq -r '.database.outputs.endpoint' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_PORT_OUTPUT=$(yq -r '.database.outputs.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_SECRET_OUTPUT=$(yq -r '.database.outputs.secret_arn' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_SECURITY_GROUP_OUTPUT=$(yq -r '.database.outputs.security_group_id' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -87,12 +88,12 @@ jobs:
       - name: Resolve database configuration
         if: inputs.database-enabled
         run: |
-          echo "Resolving database outputs from stack: $DATABASE_STACK"
+          echo "Resolving database outputs from stack: $ROOT_STACK"
 
           stack_output() {
             aws cloudformation describe-stacks \
               --region "$AWS_REGION" \
-              --stack-name "$DATABASE_STACK" \
+              --stack-name "$ROOT_STACK" \
               --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
               --output text
           }
@@ -101,13 +102,13 @@ jobs:
           DATABASE_PORT="$DATABASE_PORT_CONFIG"
 
           [ -n "$DATABASE_HOST" ] || \
-            DATABASE_HOST="$(stack_output "$DATABASE_ENDPOINT_OUTPUT")"
+            DATABASE_HOST="$(stack_output "${DATABASE_NAME}DatabaseEndpoint")"
 
           [ -n "$DATABASE_PORT" ] || \
-            DATABASE_PORT="$(stack_output "$DATABASE_PORT_OUTPUT")"
+            DATABASE_PORT="$(stack_output "${DATABASE_NAME}DatabasePort")"
 
-          DATABASE_SECRET_ARN="$(stack_output "$DATABASE_SECRET_OUTPUT")"
-          DATABASE_SECURITY_GROUP_ID="$(stack_output "$DATABASE_SECURITY_GROUP_OUTPUT")"
+          DATABASE_SECRET_ARN="$(stack_output "${DATABASE_NAME}DatabaseSecretArn")"
+          DATABASE_SECURITY_GROUP_ID="$(stack_output "${DATABASE_NAME}DatabaseSecurityGroupId")"
 
           {
             echo "DATABASE_HOST=$DATABASE_HOST"
@@ -183,7 +184,7 @@ jobs:
             echo "| Service | \`$SERVICE_NAME\` |"
             echo "| Stack | \`$STACK_NAME\` |"
             echo "| Environment | \`$ENVIRONMENT_NAME\` |"
-            echo "| ECR repository | \`$ECR_REPOSITORY\` |"
+            echo "| ECR repository | \`$ECR_REPOSITORY_FULL_NAME\` |"
             echo "| Image tag updated | \`${{ inputs.update-image }}\` |"
             if [[ "${{ inputs.update-image }}" == "true" ]]; then
               echo "| Image tag | \`$IMAGE_TAG\` |"
