@@ -46,7 +46,7 @@ jobs:
           echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
           echo "STACK_NAME=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.service.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.image.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
 
           echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
           echo "SIZE=$(yq -r '.container.size' ecs-parameters.yaml)" >> "$GITHUB_ENV"
