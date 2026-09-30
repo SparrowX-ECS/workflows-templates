@@ -82,12 +82,33 @@ jobs:
       - name: Resolve database configuration
         if: inputs.database-enabled
         run: |
-          echo "Resolving database outputs from stack: $ROOT_STACK"
+          echo "Resolving database outputs from root stack: $ROOT_STACK"
 
+          # ------------------------------------------------------------
+          # Discover the PostgreSQL nested stack from the root stack
+          # ------------------------------------------------------------
+          POSTGRES_STACK="$(
+            aws cloudformation list-stack-resources \
+              --region "$AWS_REGION" \
+              --stack-name "$ROOT_STACK" \
+              --query "StackResourceSummaries[?LogicalResourceId=='RDSPostgresDBs' && ResourceType=='AWS::CloudFormation::Stack'].PhysicalResourceId | [0]" \
+              --output text
+          )"
+
+          if [ -z "$POSTGRES_STACK" ] || [ "$POSTGRES_STACK" = "None" ]; then
+            echo "ERROR: Could not find RDSPostgresDBs nested stack under $ROOT_STACK"
+            exit 1
+          fi
+
+          echo "Discovered PostgreSQL nested stack: $POSTGRES_STACK"
+
+          # ------------------------------------------------------------
+          # Read outputs from the PostgreSQL nested stack
+          # ------------------------------------------------------------
           stack_output() {
             aws cloudformation describe-stacks \
               --region "$AWS_REGION" \
-              --stack-name "$ROOT_STACK" \
+              --stack-name "$POSTGRES_STACK" \
               --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
               --output text
           }
@@ -104,12 +125,41 @@ jobs:
           DATABASE_SECRET_ARN="$(stack_output "${DATABASE_NAME}DatabaseSecretArn")"
           DATABASE_SECURITY_GROUP_ID="$(stack_output "${DATABASE_NAME}DatabaseSecurityGroupId")"
 
+          # ------------------------------------------------------------
+          # Validate resolved configuration
+          # ------------------------------------------------------------
+          if [ -z "$DATABASE_HOST" ] || [ "$DATABASE_HOST" = "None" ]; then
+            echo "ERROR: Could not resolve database endpoint for $DATABASE_NAME"
+            exit 1
+          fi
+
+          if [ -z "$DATABASE_PORT" ] || [ "$DATABASE_PORT" = "None" ]; then
+            echo "ERROR: Could not resolve database port for $DATABASE_NAME"
+            exit 1
+          fi
+
+          if [ -z "$DATABASE_SECRET_ARN" ] || [ "$DATABASE_SECRET_ARN" = "None" ]; then
+            echo "ERROR: Could not resolve database secret ARN for $DATABASE_NAME"
+            exit 1
+          fi
+
+          if [ -z "$DATABASE_SECURITY_GROUP_ID" ] || [ "$DATABASE_SECURITY_GROUP_ID" = "None" ]; then
+            echo "ERROR: Could not resolve database security group ID for $DATABASE_NAME"
+            exit 1
+          fi
+
           {
             echo "DATABASE_HOST=$DATABASE_HOST"
             echo "DATABASE_PORT=$DATABASE_PORT"
             echo "DATABASE_SECRET_ARN=$DATABASE_SECRET_ARN"
             echo "DATABASE_SECURITY_GROUP_ID=$DATABASE_SECURITY_GROUP_ID"
           } >> "$GITHUB_ENV"
+
+          echo "Database configuration resolved successfully."
+          echo "DATABASE_HOST=$DATABASE_HOST"
+          echo "DATABASE_PORT=$DATABASE_PORT"
+          echo "DATABASE_SECRET_ARN=$DATABASE_SECRET_ARN"
+          echo "DATABASE_SECURITY_GROUP_ID=$DATABASE_SECURITY_GROUP_ID"
 
       - name: Deploy ECS service
         env:
