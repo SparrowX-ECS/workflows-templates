@@ -2,19 +2,23 @@ name: Pre-Build
 
 on:
   workflow_call:
-
+    inputs:
+      env-params-file:
+        description: Path to the ECS parameters file
+        required: true
+        type: string
     outputs:
       build-needed:
         description: Whether a new image needs to be built
         value: ${{ jobs.pre-build.outputs.build-needed }}
 
-      deploy-needed:
-        description: Whether deployment is needed
-        value: ${{ jobs.pre-build.outputs.deploy-needed }}
-
 permissions:
   contents: read
   id-token: write
+
+env:
+  AWS_REGION: ${ { vars.AWS_REGION } }
+  ENV_PARAMS_FILE: ${{ inputs.env-params-file }}  
 
 jobs:
 
@@ -44,13 +48,6 @@ jobs:
               - 'tests/**'
               - 'Dockerfile'
 
-            deploy:
-              - 'src/**'
-              - 'tests/**'
-              - 'Dockerfile'
-              - 'ecs-parameters.yaml'
-              - '.github/workflows/deploy.yaml'
-
       # ==========================================================
       # Only needed when there are NO code changes
       # ==========================================================
@@ -58,11 +55,11 @@ jobs:
       - name: Load configuration
         if: steps.filter.outputs.code == 'false'
         run: |
-          echo "SERVICE_STACK_NAME=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "SERVICE_STACK_NAME=$(yq -r '.project.name' $ENV_PARAMS_FILE)-$(yq -r '.project.environment' $ENV_PARAMS_FILE)-$(yq -r '.service.name' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.image.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.image.nameSpace' $ENV_PARAMS_FILE)/$(yq -r '.image.repository' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "ECS_CLUSTER=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-cluster" >> "$GITHUB_ENV"
+          echo "ECS_CLUSTER=$(yq -r '.project.name' $ENV_PARAMS_FILE)-$(yq -r '.project.environment' $ENV_PARAMS_FILE)-cluster" >> "$GITHUB_ENV"
 
       - name: Configure AWS credentials
         if: steps.filter.outputs.code == 'false'

@@ -8,16 +8,23 @@ on:
         required: false
         type: boolean
         default: false
-
-      update-image:
-        description: Whether to deploy a new image tag
-        required: false
-        type: boolean
-        default: false
+      env-params-file:
+        description: Path to the ECS parameters file
+        required: true
+        type: string
+      image-tag:
+        description: Image tag to deploy
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write
+
+env:
+  AWS_REGION: ${ { vars.AWS_REGION } }
+  ENV_PARAMS_FILE: ${{ inputs.env-params-file }}
+  IMAGE_TAG: ${{ inputs.image-tag }}
 
 jobs:
   deploy:
@@ -32,39 +39,39 @@ jobs:
 
       - name: Load service configuration
         run: |
-          echo "ENVIRONMENT_NAME=$(yq -r '.project.environment' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "PROJECT_NAME=$(yq -r '.project.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "SERVICE_NAME=$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "ENVIRONMENT_NAME=$(yq -r '.project.environment' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "PROJECT_NAME=$(yq -r '.project.name' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "SERVICE_NAME=$(yq -r '.service.name' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAME=$(yq -r '.image.repository' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_NAMESPACE=$(yq -r '.image.nameSpace' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "SERVICE_STACK_NAME=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-$(yq -r '.service.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.image.nameSpace' ecs-parameters.yaml)/$(yq -r '.image.repository' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "SERVICE_STACK_NAME=$(yq -r '.project.name' $ENV_PARAMS_FILE)-$(yq -r '.project.environment' $ENV_PARAMS_FILE)-$(yq -r '.service.name' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "ECR_REPOSITORY_FULL_NAME=$(yq -r '.image.nameSpace' $ENV_PARAMS_FILE)/$(yq -r '.image.repository' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "CONTAINER_PORT=$(yq -r '.container.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "SIZE=$(yq -r '.container.size' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "CONTAINER_PORT=$(yq -r '.container.port' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "SIZE=$(yq -r '.container.size' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "DESIRED_COUNT=$(yq -r '.deployment.desiredCount' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DESIRED_COUNT=$(yq -r '.deployment.desiredCount' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "PATH_PATTERN=$(yq -r '.loadBalancer.pathPattern' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "LISTENER_PRIORITY=$(yq -r '.loadBalancer.listenerRulePriority' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "HEALTH_CHECK_PATH=$(yq -r '.loadBalancer.healthCheckPath' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "PATH_PATTERN=$(yq -r '.loadBalancer.pathPattern' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "LISTENER_PRIORITY=$(yq -r '.loadBalancer.listenerRulePriority' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "HEALTH_CHECK_PATH=$(yq -r '.loadBalancer.healthCheckPath' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "CUSTOMER_API_URL=$(yq -r '.upstream.customerApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "TASK_API_URL=$(yq -r '.upstream.taskApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "BILLING_API_URL=$(yq -r '.upstream.billingApiUrl // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "CUSTOMER_API_URL=$(yq -r '.upstream.customerApiUrl // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "TASK_API_URL=$(yq -r '.upstream.taskApiUrl // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "BILLING_API_URL=$(yq -r '.upstream.billingApiUrl // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "CORS_ALLOW_ORIGINS=$(yq -r '.frontend.corsAllowOrigins // empty' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "CORS_ALLOW_ORIGINS=$(yq -r '.frontend.corsAllowOrigins // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
       
       - name: Load database configuration
         if: inputs.database-enabled
         run: |
-          echo "ROOT_STACK=$(yq -r '.project.name' ecs-parameters.yaml)-$(yq -r '.project.environment' ecs-parameters.yaml)-root-stack" >> "$GITHUB_ENV"
+          echo "ROOT_STACK=$(yq -r '.project.name' $ENV_PARAMS_FILE)-$(yq -r '.project.environment' $ENV_PARAMS_FILE)-root-stack" >> "$GITHUB_ENV"
 
-          echo "DATABASE_ENABLED=$(yq -r '.database.enabled' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_HOST_CONFIG=$(yq -r '.database.endpoint' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_PORT_CONFIG=$(yq -r '.database.port' ecs-parameters.yaml)" >> "$GITHUB_ENV"
-          echo "DATABASE_NAME=$(yq -r '.database.name' ecs-parameters.yaml)" >> "$GITHUB_ENV"
+          echo "DATABASE_ENABLED=$(yq -r '.database.enabled' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "DATABASE_HOST_CONFIG=$(yq -r '.database.endpoint' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "DATABASE_PORT_CONFIG=$(yq -r '.database.port' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "DATABASE_NAME=$(yq -r '.database.name' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
           
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -209,13 +216,12 @@ jobs:
           esac
 
       - name: Deploy ECS service
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           parameters=(
             "EnvironmentName=$ENVIRONMENT_NAME"
             "ServiceName=$SERVICE_NAME"
             "ECRRepoFullName=$ECR_REPOSITORY_FULL_NAME"
+            "ImageTag=$IMAGE_TAG"
             "ContainerPort=$CONTAINER_PORT"
             "Size=$SIZE"
             "DesiredCount=$DESIRED_COUNT"
@@ -250,10 +256,6 @@ jobs:
             )
           fi
 
-          if [[ "${{ inputs.update-image }}" == "true" ]]; then
-            parameters+=("ImageTag=$IMAGE_TAG")
-          fi
-
           echo "Deploying stack: $SERVICE_STACK_NAME"
           echo "Service: $SERVICE_NAME"
           echo "ECRRepo: $ECR_REPOSITORY_FULL_NAME"
@@ -269,8 +271,6 @@ jobs:
 
       - name: Add deployment summary
         if: always()
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           {
             echo "## ECS deployment"
@@ -281,10 +281,7 @@ jobs:
             echo "| Stack | \`$SERVICE_STACK_NAME\` |"
             echo "| Environment | \`$ENVIRONMENT_NAME\` |"
             echo "| ECR repository | \`$ECR_REPOSITORY_FULL_NAME\` |"
-            echo "| Image tag updated | \`${{ inputs.update-image }}\` |"
-            if [[ "${{ inputs.update-image }}" == "true" ]]; then
-              echo "| Image tag | \`$IMAGE_TAG\` |"
-            fi
+            echo "| Image tag | \`$IMAGE_TAG\` |"
             echo "| Database enabled | \`${{ inputs.database-enabled }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 

@@ -1,0 +1,165 @@
+name: Copy Image
+
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        description: Image tag to promote
+        required: true
+        type: string
+
+      image-digest:
+        description: Expected image digest
+        required: true
+        type: string
+
+      source-env-params-file:
+        description: ECS parameters file for the source environment
+        required: true
+        type: string
+
+      target-env-params-file:
+        description: ECS parameters file for the target environment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  SOURCE_ENV_PARAMS_FILE: ${{ inputs.source-env-params-file }}
+  TARGET_ENV_PARAMS_FILE: ${{ inputs.target-env-params-file }}
+  IMAGE_TAG: ${{ inputs.image-tag }}
+  IMAGE_DIGEST: ${{ inputs.image-digest }}
+
+jobs:
+  copy-image:
+    name: Copy Image to Target ECR
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout application
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        uses: mikefarah/yq@v4.48.2
+
+      - name: Load ECR repositories
+        run: |
+          SOURCE_ECR_REPOSITORY="$(
+            yq -r '.image.nameSpace' "$SOURCE_ENV_PARAMS_FILE"
+          )/$(
+            yq -r '.image.repository' "$SOURCE_ENV_PARAMS_FILE"
+          )"
+
+          TARGET_ECR_REPOSITORY="$(
+            yq -r '.image.nameSpace' "$TARGET_ENV_PARAMS_FILE"
+          )/$(
+            yq -r '.image.repository' "$TARGET_ENV_PARAMS_FILE"
+          )"
+
+          if [ -z "$SOURCE_ECR_REPOSITORY" ] || [ "$SOURCE_ECR_REPOSITORY" = "null/null" ]; then
+            echo "ERROR: Source ECR repository could not be resolved."
+            exit 1
+          fi
+
+          if [ -z "$TARGET_ECR_REPOSITORY" ] || [ "$TARGET_ECR_REPOSITORY" = "null/null" ]; then
+            echo "ERROR: Target ECR repository could not be resolved."
+            exit 1
+          fi
+
+          echo "SOURCE_ECR_REPOSITORY=$SOURCE_ECR_REPOSITORY" >> "$GITHUB_ENV"
+          echo "TARGET_ECR_REPOSITORY=$TARGET_ECR_REPOSITORY" >> "$GITHUB_ENV"
+
+          echo "Source repository: $SOURCE_ECR_REPOSITORY"
+          echo "Target repository: $TARGET_ECR_REPOSITORY"
+          echo "Image tag: $IMAGE_TAG"
+          echo "Expected digest: $IMAGE_DIGEST"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars.AWS_ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure target repository exists
+        run: |
+          aws ecr describe-repositories \
+            --repository-names "$TARGET_ECR_REPOSITORY" \
+            --region "$AWS_REGION" \
+            > /dev/null
+
+          echo "Target ECR repository exists."
+
+      - name: Retrieve image manifest from source ECR
+        run: |
+          echo "Retrieving image manifest from source ECR..."
+
+          aws ecr batch-get-image \
+            --repository-name "$SOURCE_ECR_REPOSITORY" \
+            --image-ids imageDigest="$IMAGE_DIGEST" \
+            --region "$AWS_REGION" \
+            --query 'images[0].imageManifest' \
+            --output text > /tmp/image-manifest.json
+
+          if [ ! -s /tmp/image-manifest.json ]; then
+            echo "ERROR: Image manifest could not be retrieved."
+            exit 1
+          fi
+
+          echo "Image manifest retrieved successfully."
+
+      - name: Copy image to target ECR
+        run: |
+          echo "Copying image..."
+          echo "Source: $SOURCE_ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Target: $TARGET_ECR_REPOSITORY:$IMAGE_TAG"
+
+          aws ecr put-image \
+          --repository-name "$TARGET_ECR_REPOSITORY" \
+          --image-tag "$IMAGE_TAG" \
+          --image-digest "$IMAGE_DIGEST" \
+          --image-manifest fileb:///tmp/image-manifest.json \
+          --region "$AWS_REGION"
+
+          echo "Image copied successfully."
+
+      - name: Verify promoted image
+        run: |
+          echo "Verifying image in target ECR..."
+
+          TARGET_IMAGE_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$TARGET_ECR_REPOSITORY" \
+              --image-ids imageTag="$IMAGE_TAG" \
+              --region "$AWS_REGION" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text
+          )"
+
+          echo "Expected digest: $IMAGE_DIGEST"
+          echo "Target digest:   $TARGET_IMAGE_DIGEST"
+
+          if [ "$TARGET_IMAGE_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "ERROR: Target image digest does not match source image digest."
+            exit 1
+          fi
+
+          echo "Image promotion verified successfully."
+
+      - name: Add promotion summary
+        if: always()
+        run: |
+          {
+            echo "## ECR image promotion"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Source repository | \`$SOURCE_ECR_REPOSITORY\` |"
+            echo "| Target repository | \`$TARGET_ECR_REPOSITORY\` |"
+            echo "| Image tag | \`$IMAGE_TAG\` |"
+            echo "| Image digest | \`$IMAGE_DIGEST\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
