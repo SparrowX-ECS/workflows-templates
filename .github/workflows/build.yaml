@@ -112,15 +112,17 @@ jobs:
       - name: Add build summary
         if: always()
         run: |
+          ECR_REPOSITORY="${ECR_REPOSITORY_FULL_NAME:-Unavailable}"
+          IMAGE_TAG="${{ steps.image-tag.outputs.image-tag || 'Unavailable' }}"
+          IMAGE_EXISTS="${{ steps.image.outputs.exists || 'Unknown' }}"
+
           {
             echo "## Build"
             echo
             echo "| Item | Value |"
             echo "|---|---|"
-            echo "| ECR repository | `$ECR_REPOSITORY_FULL_NAME` |"
-            echo "| Image tag | `$IMAGE_TAG` |"
-            if [ "${{ inputs.frontend }}" = "true" ]; then
-              echo "| API base URL | `$API_BASE_URL` |"
-            fi
-            echo "| Image existed before build | `${{ steps.image.outputs.exists || 'unknown' }}` |"
+            echo "| ECR repository | \`$ECR_REPOSITORY\` |"
+            echo "| Image tag | \`$IMAGE_TAG\` |"
+            echo "| Image existed before build | \`$IMAGE_EXISTS\` |"
+            echo "| Result | \`${{ job.status }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

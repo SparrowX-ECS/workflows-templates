@@ -80,6 +80,7 @@ jobs:
           if [ "${{ steps.filter.outputs.code }}" = "true" ]; then
             echo "Code changed. New image is needed."
             echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Code changes detected." >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -95,6 +96,7 @@ jobs:
           if [ "$SERVICE_STATUS" != "ACTIVE" ]; then
             echo "ECS service does not exist. New image is needed."
             echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=ECS service does not exist." >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -125,11 +127,44 @@ jobs:
             echo "Currently deployed image exists in ECR."
             echo "New image is not needed."
             echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=No code changes and the currently deployed image exists in ECR." >> "$GITHUB_OUTPUT"
 
           else
 
             echo "Currently deployed image does not exist in ECR."
             echo "New image is needed."
             echo "needed=true" >> "$GITHUB_OUTPUT"
+             echo "reason=No code changes, but the currently deployed image no longer exists in ECR." >> "$GITHUB_OUTPUT"
 
           fi
+      
+      - name: Add pre-build summary
+        if: always()
+        run: |
+          CODE_CHANGED="${{ steps.filter.outputs.code }}"
+          BUILD_NEEDED="${{ steps.build-check.outputs.needed }}"
+          REASON="${{ steps.build-check.outputs.reason }}"
+
+          if [ "$CODE_CHANGED" = "true" ]; then
+            CODE_STATUS="Yes"
+          else
+            CODE_STATUS="No"
+          fi
+
+          if [ "$BUILD_NEEDED" = "true" ]; then
+            BUILD_STATUS="Yes"
+          elif [ "$BUILD_NEEDED" = "false" ]; then
+            BUILD_STATUS="No"
+          else
+            BUILD_STATUS="Unknown"
+          fi
+
+          {
+            echo "## Pre-Build"
+            echo
+            echo "| Item | Result |"
+            echo "|---|---|"
+            echo "| Code changes | **$CODE_STATUS** |"
+            echo "| Build needed | **$BUILD_STATUS** |"
+            echo "| Reason | $REASON |"
+          } >> "$GITHUB_STEP_SUMMARY"

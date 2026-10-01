@@ -34,8 +34,8 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      image-tag: ${{ steps.resolve.outputs.image-tag }}
-      image-digest: ${{ steps.resolve.outputs.image-digest }}
+      image-tag: ${{ steps.image-metadata.outputs.image-tag }}
+      image-digest: ${{ steps.image-metadata.outputs.image-digest }}
 
     steps:
 
@@ -73,11 +73,6 @@ jobs:
             exit 1
           fi
 
-          echo "IMAGE_METADATA=$IMAGE_METADATA" >> "$GITHUB_ENV"
-
-      - name: Validate image metadata
-        id: resolve
-        run: |
           IMAGE_TAG="$(echo "$IMAGE_METADATA" | jq -r '.image.tag')"
           IMAGE_DIGEST="$(echo "$IMAGE_METADATA" | jq -r '.image.digest')"
 
@@ -90,6 +85,16 @@ jobs:
             echo "ERROR: Image digest is missing from metadata."
             exit 1
           fi
+
+          echo "Image tag: $IMAGE_TAG"
+          echo "Image digest: $IMAGE_DIGEST"
+
+          echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image-digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Validate image metadata
+        id: validate-image
+        run: |
 
           echo "Validating image in ECR..."
           echo "Repository: $ECR_REPOSITORY_FULL_NAME"
@@ -122,6 +127,3 @@ jobs:
           echo "Image validation successful."
           echo "Image tag: $IMAGE_TAG"
           echo "Image digest: $IMAGE_DIGEST"
-          
-          echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "image-digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
