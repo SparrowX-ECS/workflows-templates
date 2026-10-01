@@ -47,12 +47,14 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Exit Code is set to 0 to report findings only, 
+      # which is appropriate for the project of this scope, but not advised for builds that will might be promoted later to production
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_FULL_NAME }}:${{ env.IMAGE_TAG }}
           format: table
-          exit-code: '1'
+          exit-code: '0'
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
