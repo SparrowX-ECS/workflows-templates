@@ -53,7 +53,8 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_FULL_NAME }}:${{ env.IMAGE_TAG }}
-          format: table
+          format: json
+          output: trivy-results.json
           exit-code: '0'
           ignore-unfixed: true
           vuln-type: os,library
@@ -68,8 +69,46 @@ jobs:
             echo "| Item | Value |"
             echo "|---|---|"
             echo "| Scanner | Trivy |"
-            echo "| ECR repository | \`$ECR_REPOSITORY_FULL_NAME\` |"
-            echo "| Image tag | \`$IMAGE_TAG\` |"
-            echo "| Severity threshold | \`CRITICAL,HIGH\` |"
-            echo "| Unfixed vulnerabilities | Ignored |"
+            echo "| Image | \`$ECR_REPOSITORY_FULL_NAME:$IMAGE_TAG\` |"
+            echo "| Severity | CRITICAL, HIGH |"
+            echo
+
+            TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-results.json)
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-results.json)
+            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-results.json)
+
+            echo "### Findings"
+            echo
+            echo "| Severity | Count |"
+            echo "|---|---:|"
+            echo "| CRITICAL | $CRITICAL |"
+            echo "| HIGH | $HIGH |"
+            echo "| **Total** | **$TOTAL** |"
+            echo
+
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "### Result"
+              echo
+              echo "No CRITICAL or HIGH vulnerabilities found."
+            else
+              echo "### Vulnerabilities"
+              echo
+              echo "| Severity | Package | Installed | Fixed | CVE |"
+              echo "|---|---|---|---|---|"
+
+              jq -r '
+                .Results[]?.Vulnerabilities[]?
+                | [
+                    .Severity,
+                    .PkgName,
+                    .InstalledVersion,
+                    (.FixedVersion // "Not fixed"),
+                    .VulnerabilityID
+                  ]
+                | @tsv
+              ' trivy-results.json |
+              while IFS=$'\t' read -r severity package installed fixed cve; do
+                echo "| $severity | \`$package\` | \`$installed\` | \`$fixed\` | $cve |"
+              done
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
