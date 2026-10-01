@@ -3,6 +3,10 @@ name: Deploy
 on:
   workflow_call:
     inputs:
+      environment:
+        description: GitHub deployment environment
+        required: true
+        type: string
       database-enabled:
         description: Whether the service uses a database
         required: false
@@ -29,6 +33,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ inputs.environment }}
 
     steps:
       - name: Checkout application
