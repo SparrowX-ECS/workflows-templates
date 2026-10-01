@@ -41,10 +41,12 @@ jobs:
           filters: |
             code:
               - 'src/**'
+              - 'tests/**'
               - 'Dockerfile'
 
             deploy:
               - 'src/**'
+              - 'tests/**'
               - 'Dockerfile'
               - 'ecs-parameters.yaml'
               - '.github/workflows/deploy.yaml'
