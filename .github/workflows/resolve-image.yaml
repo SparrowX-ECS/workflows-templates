@@ -86,8 +86,8 @@ jobs:
             exit 1
           fi
 
-          echo "Image tag: $IMAGE_TAG"
-          echo "Image digest: $IMAGE_DIGEST"
+          echo "Image tag: $IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "Image digest: $IMAGE_DIGEST" >> "$GITHUB_ENV"
 
           echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "image-digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
@@ -95,7 +95,6 @@ jobs:
       - name: Validate image metadata
         id: validate-image
         run: |
-
           echo "Validating image in ECR..."
           echo "Repository: $ECR_REPOSITORY_FULL_NAME"
           echo "Tag: $IMAGE_TAG"
@@ -127,3 +126,28 @@ jobs:
           echo "Image validation successful."
           echo "Image tag: $IMAGE_TAG"
           echo "Image digest: $IMAGE_DIGEST"
+
+      - name: Add resolve image summary
+        if: always()
+        run: |
+          IMAGE_TAG="${IMAGE_TAG:-Unavailable}"
+          IMAGE_DIGEST="${IMAGE_DIGEST:-Unavailable}"
+          REPOSITORY="${ECR_REPOSITORY_FULL_NAME:-Unavailable}"
+
+          if [ "${{ steps.validate-image.outcome }}" = "success" ]; then
+            VALIDATION="Passed"
+          else
+            VALIDATION="Failed"
+          fi
+
+          {
+            echo "## Resolve Image"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Parameter | \`${{ inputs.ssm-parameter-path }}\` |"
+            echo "| ECR repository | \`$REPOSITORY\` |"
+            echo "| Image tag | \`$IMAGE_TAG\` |"
+            echo "| Image digest | \`$IMAGE_DIGEST\` |"
+            echo "| ECR validation | **$VALIDATION** |"
+          } >> "$GITHUB_STEP_SUMMARY"
