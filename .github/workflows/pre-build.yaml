@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 env:
-  AWS_REGION: ${ { vars.AWS_REGION } }
+  AWS_REGION: ${{ vars.AWS_REGION }}
   ENV_PARAMS_FILE: ${{ inputs.env-params-file }}  
 
 jobs:

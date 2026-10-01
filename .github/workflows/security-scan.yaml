@@ -7,6 +7,11 @@ on:
         description: Path to the ECS parameters file
         required: true
         type: string
+      image-tag:
+        description: Image tag to promote
+        required: true
+        type: string
+
 permissions:
   contents: read
   id-token: write
@@ -14,6 +19,7 @@ permissions:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ENV_PARAMS_FILE: ${{ inputs.env-params-file }}  
+  IMAGE_TAG: ${{ inputs.image-tag }}
 
 jobs:
   security-scan:
@@ -44,7 +50,7 @@ jobs:
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_FULL_NAME }}:${{ github.sha }}
+          image-ref: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_FULL_NAME }}:${{ env.IMAGE_TAG }}
           format: table
           exit-code: '1'
           ignore-unfixed: true
@@ -53,8 +59,6 @@ jobs:
 
       - name: Add security scan summary
         if: always()
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           {
             echo "## Security Scan"
