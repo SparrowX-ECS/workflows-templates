@@ -121,7 +121,6 @@ jobs:
           aws ecr put-image \
           --repository-name "$TARGET_ECR_REPOSITORY" \
           --image-tag "$IMAGE_TAG" \
-          --image-digest "$IMAGE_DIGEST" \
           --image-manifest file:///tmp/image-manifest.json \
           --region "$AWS_REGION"
 
