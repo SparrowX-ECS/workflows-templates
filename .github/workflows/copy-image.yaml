@@ -122,7 +122,7 @@ jobs:
           --repository-name "$TARGET_ECR_REPOSITORY" \
           --image-tag "$IMAGE_TAG" \
           --image-digest "$IMAGE_DIGEST" \
-          --image-manifest fileb:///tmp/image-manifest.json \
+          --image-manifest file:///tmp/image-manifest.json \
           --region "$AWS_REGION"
 
           echo "Image copied successfully."
