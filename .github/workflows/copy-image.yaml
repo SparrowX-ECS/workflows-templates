@@ -94,39 +94,67 @@ jobs:
 
           echo "Target ECR repository exists."
 
-      - name: Retrieve image manifest from source ECR
+      - name: Install Skopeo
         run: |
-          echo "Retrieving image manifest from source ECR..."
+          sudo apt-get update
+          sudo apt-get install -y skopeo
 
-          aws ecr batch-get-image \
-            --repository-name "$SOURCE_ECR_REPOSITORY" \
-            --image-ids imageDigest="$IMAGE_DIGEST" \
-            --region "$AWS_REGION" \
-            --query 'images[0].imageManifest' \
-            --output text > /tmp/image-manifest.json
+          skopeo --version
 
-          if [ ! -s /tmp/image-manifest.json ]; then
-            echo "ERROR: Image manifest could not be retrieved."
-            exit 1
+      - name: Login to ECR
+        run: |
+          ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          aws ecr get-login-password \
+            --region "$AWS_REGION" |
+            skopeo login \
+              --username AWS \
+              --password-stdin \
+              "$ECR_REGISTRY"
+
+      - name: Check whether image exists in ECR
+        id: image
+        run: |
+          set +e
+          describe_output=$(aws ecr describe-images \
+            --repository-name "$TARGET_ECR_REPOSITORY" \
+            --image-ids "imageTag=$IMAGE_TAG" \
+            --region "$AWS_REGION" 2>&1)
+          describe_status=$?
+          set -e
+
+          if [ "$describe_status" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image already exists; skipping."
+          elif grep -q "ImageNotFoundException" <<< "$describe_output"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image does not exist; it will be copied."
+          else
+            echo "$describe_output"
+            exit "$describe_status"
           fi
 
-          echo "Image manifest retrieved successfully."
-
       - name: Copy image to target ECR
+        if: steps.image.outputs.exists != 'true'
         run: |
+          ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          SOURCE_IMAGE="docker://$ECR_REGISTRY/$SOURCE_ECR_REPOSITORY@$IMAGE_DIGEST"
+          TARGET_IMAGE="docker://$ECR_REGISTRY/$TARGET_ECR_REPOSITORY:$IMAGE_TAG"
+
           echo "Copying image..."
-          echo "Source: $SOURCE_ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Source: $SOURCE_ECR_REPOSITORY@$IMAGE_DIGEST"
           echo "Target: $TARGET_ECR_REPOSITORY:$IMAGE_TAG"
 
-          aws ecr put-image \
-          --repository-name "$TARGET_ECR_REPOSITORY" \
-          --image-tag "$IMAGE_TAG" \
-          --image-manifest file:///tmp/image-manifest.json \
-          --region "$AWS_REGION"
+          skopeo copy \
+            --all \
+            "$SOURCE_IMAGE" \
+            "$TARGET_IMAGE"
 
           echo "Image copied successfully."
 
       - name: Verify promoted image
+        if: steps.image.outputs.exists != 'true'
         run: |
           echo "Verifying image in target ECR..."
 
@@ -153,7 +181,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## ECR image promotion"
+            echo "## ECR Image Promotion"
             echo
             echo "| Item | Value |"
             echo "|---|---|"
@@ -161,4 +189,6 @@ jobs:
             echo "| Target repository | \`$TARGET_ECR_REPOSITORY\` |"
             echo "| Image tag | \`$IMAGE_TAG\` |"
             echo "| Image digest | \`$IMAGE_DIGEST\` |"
+            echo "| Image existed before copy | \`$IMAGE_EXISTS\` |"
+            echo "| Result | \`${{ job.status }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
