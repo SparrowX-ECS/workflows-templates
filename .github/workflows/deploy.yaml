@@ -64,11 +64,11 @@ jobs:
           echo "LISTENER_PRIORITY=$(yq -r '.loadBalancer.listenerRulePriority' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
           echo "HEALTH_CHECK_PATH=$(yq -r '.loadBalancer.healthCheckPath' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "CUSTOMER_API_URL=$(yq -r '.upstream.customerApiUrl // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
-          echo "TASK_API_URL=$(yq -r '.upstream.taskApiUrl // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
-          echo "BILLING_API_URL=$(yq -r '.upstream.billingApiUrl // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "CUSTOMER_API_URL=$(yq -r '.upstream.customerApiUrl // ""' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "TASK_API_URL=$(yq -r '.upstream.taskApiUrl // ""' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "BILLING_API_URL=$(yq -r '.upstream.billingApiUrl // ""' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
 
-          echo "CORS_ALLOW_ORIGINS=$(yq -r '.frontend.corsAllowOrigins // empty' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
+          echo "CORS_ALLOW_ORIGINS=$(yq -r '.frontend.corsAllowOrigins // ""' $ENV_PARAMS_FILE)" >> "$GITHUB_ENV"
       
       - name: Load database configuration
         if: inputs.database-enabled
