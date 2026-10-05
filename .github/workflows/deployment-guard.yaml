@@ -28,8 +28,9 @@ jobs:
 
     env:
       INFRASTRUCTURE_REPOSITORY: SparrowX-ECS/ecs-infrastructure
+      INFRASTRUCTURE_REPOSITORY_PATH: ecs-infrastructure
       INFRASTRUCTURE_PARAMETERS_FILE: environments/${{ inputs.environment }}/${{ inputs.environment }}-parameters.yaml
-
+    
     outputs:
       deployment-enabled: ${{ steps.guard.outputs.deployment-enabled }}
 
@@ -41,7 +42,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.INFRASTRUCTURE_REPOSITORY }}
-          path: ecs-infrastructure
+          path: ${{ env.INFRASTRUCTURE_REPOSITORY_PATH }}
 
       - name: Install yq
         uses: mikefarah/yq@v4.48.2
@@ -50,7 +51,7 @@ jobs:
         id: guard
         env:
           APP_PARAMETERS_FILE: ${{ inputs.env-params-file }}
-          INFRA_PARAMETERS_FILE: ${{ env.INFRASTRUCTURE_REPOSITORY }}/${{ env.INFRASTRUCTURE_PARAMETERS_FILE }}
+          INFRA_PARAMETERS_FILE: ${{ env.INFRASTRUCTURE_REPOSITORY_PATH }}/${{ env.INFRASTRUCTURE_PARAMETERS_FILE }}
         run: |
           set -euo pipefail
 
