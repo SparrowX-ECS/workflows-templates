@@ -61,6 +61,9 @@ jobs:
           echo "AppStack.State: $APP_STACK_STATE"
           echo "RootStack.State: $ROOT_STACK_STATE"
 
+          echo "app-stack-state=$APP_STACK_STATE" >> "$GITHUB_OUTPUT"
+          echo "root-stack-state=$ROOT_STACK_STATE" >> "$GITHUB_OUTPUT"
+
           if [[ "$APP_STACK_STATE" != "enabled" &&
                 "$APP_STACK_STATE" != "disabled" ]]; then
             echo "ERROR: Invalid AppStack.State: $APP_STACK_STATE"
@@ -83,3 +86,17 @@ jobs:
             echo "Deployment is disabled."
             echo "deployment-enabled=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Add deployment guard summary
+        if: always()
+        run: |
+          {
+            echo "## Deployment Guard"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Environment | \`${{ inputs.environment }}\` |"
+            echo "| AppStack.State | \`${{ steps.guard.outputs.app-stack-state || 'unknown' }}\` |"
+            echo "| RootStack.State | \`${{ steps.guard.outputs.root-stack-state || 'unknown' }}\` |"
+            echo "| Deployment | \`${{ steps.guard.outputs.deployment-enabled == 'true' && 'enabled' || 'disabled' }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
