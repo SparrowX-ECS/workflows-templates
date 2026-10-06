@@ -8,16 +8,17 @@ Reusable GitHub Actions workflows for the SparrowX sample services. SparrowX is 
 | --- | --- |
 | `pre-build.yaml` | Detects whether application or deployment-relevant files changed and resolves image metadata |
 | `test.yaml` | Runs Python or Node tests, optionally with PostgreSQL |
-| `secret-scanning.yaml` | Scans the checked-out repository filesystem for secrets with Trivy |
-| `sast.yaml` | Scans Python, JavaScript, and TypeScript source code with Semgrep |
-| `sbom.yaml` | Generates a CycloneDX SBOM for an immutable ECR image with Trivy |
+| `source-security-scan.yaml` | Combines Trivy secret scanning and runtime-aware Semgrep SAST into one report artifact |
 | `build.yaml` | Builds once, tags with the Git SHA, and pushes to the environment-specific ECR namespace; skips an existing tag |
-| `security-scan.yaml` | Scans the immutable image with Trivy |
+| `image-security-scan.yaml` | Combines immutable-image vulnerability scanning and CycloneDX SBOM generation into one report artifact |
+| `ci-quality-gate.yaml` | Applies the CI security policy to source-security and image-security report artifacts |
 | `deploy.yaml` | Resolves configuration and database outputs, deploys the shared CloudFormation service stack, waits for stability, and writes summaries/events |
 | `smoke-test.yaml` | Calls the configured environment URL and smoke-test path |
 | `publish-image-metadata.yaml` | Stores tag, digest, repository, and security metadata in SSM Parameter Store |
 | `resolve-image.yaml` | Resolves a previously published tag and digest for deployment or promotion |
 | `copy-image.yaml` | Copies the exact image by digest between environment ECR repositories and verifies the target digest |
+
+Workflow usage documentation is available in [`source-security-scan.md`](source-security-scan.md), [`image-security-scan.md`](image-security-scan.md), and [`ci-quality-gate.md`](ci-quality-gate.md).
 
 ## Delivery contract
 
