@@ -1,0 +1,140 @@
+name: SAST
+
+on:
+  workflow_call:
+    inputs:
+      runtime:
+        description: Application runtime to scan
+        required: true
+        type: string
+    outputs:
+      findings:
+        description: Number of SAST findings reported by Semgrep
+        value: ${{ jobs.sast.outputs.findings }}
+      scan-status:
+        description: "Scanner result: passed, findings, or error"
+        value: ${{ jobs.sast.outputs.scan-status }}
+
+permissions:
+  contents: read
+
+jobs:
+  sast:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+
+    outputs:
+      findings: ${{ steps.summary.outputs.findings }}
+      scan-status: ${{ steps.summary.outputs.scan-status }}
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Semgrep
+        run: python -m pip install semgrep
+
+      - name: Scan source code with Semgrep
+        run: |
+          case "${{ inputs.runtime }}" in
+            python)
+              CONFIGURATION="Python/OWASP/FastAPI/SQL"
+              CONFIGS=(
+                --config p/owasp-top-ten
+                --config p/security-audit
+                --config p/python
+                --config p/fastapi
+                --config p/sql-injection
+              )
+              ;;
+            node)
+              CONFIGURATION="React/TypeScript/JavaScript/OWASP"
+              CONFIGS=(
+                --config p/owasp-top-ten
+                --config p/react
+                --config p/typescript
+                --config p/javascript
+              )
+              ;;
+            *)
+              echo "Unsupported runtime: ${{ inputs.runtime }}"
+              echo "Supported runtimes: python, node"
+              exit 2
+              ;;
+          esac
+
+          echo "SAST_CONFIGURATION=$CONFIGURATION" >> "$GITHUB_ENV"
+          semgrep scan \
+            "${CONFIGS[@]}" \
+            --metrics=off \
+            --json \
+            --output semgrep-results.json \
+            .
+
+      - name: Add SAST summary
+        id: summary
+        if: always()
+        run: |
+          {
+            echo "## SAST"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Scanner | Semgrep |"
+            echo "| Runtime | ${{ inputs.runtime }} |"
+            echo "| Configuration | $SAST_CONFIGURATION |"
+            echo "| Policy | Report findings; quality gate decides blocking |"
+            echo
+
+            if [ ! -f semgrep-results.json ]; then
+              echo "### Result"
+              echo
+              echo "SAST did not produce a results file."
+              echo "findings=0" >> "$GITHUB_OUTPUT"
+              echo "scan-status=error" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            TOTAL=$(jq '.results | length' semgrep-results.json)
+            echo "findings=$TOTAL" >> "$GITHUB_OUTPUT"
+
+            echo "### Findings"
+            echo
+            echo "| Metric | Count |"
+            echo "|---|---:|"
+            echo "| Findings | **$TOTAL** |"
+            echo
+
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "scan-status=passed" >> "$GITHUB_OUTPUT"
+              echo "### Result"
+              echo
+              echo "No SAST findings detected."
+            else
+              echo "scan-status=findings" >> "$GITHUB_OUTPUT"
+              echo "### Result"
+              echo
+              echo "SAST findings were detected and passed to the quality gate."
+              echo
+              echo "| File | Rule | Severity |"
+              echo "|---|---|---|"
+
+              jq -r '
+                .results[]
+                | [
+                    .path,
+                    .check_id,
+                    (.extra.severity // "INFO")
+                  ]
+                | @tsv
+              ' semgrep-results.json |
+              while IFS=$'\t' read -r file rule severity; do
+                echo "| \`$file\` | \`$rule\` | $severity |"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
