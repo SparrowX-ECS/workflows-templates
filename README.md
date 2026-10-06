@@ -10,6 +10,7 @@ Reusable GitHub Actions workflows for the SparrowX sample services. SparrowX is 
 | `test.yaml` | Runs Python or Node tests, optionally with PostgreSQL |
 | `secret-scanning.yaml` | Scans the checked-out repository filesystem for secrets with Trivy |
 | `sast.yaml` | Scans Python, JavaScript, and TypeScript source code with Semgrep |
+| `sbom.yaml` | Generates a CycloneDX SBOM for an immutable ECR image with Trivy |
 | `build.yaml` | Builds once, tags with the Git SHA, and pushes to the environment-specific ECR namespace; skips an existing tag |
 | `security-scan.yaml` | Scans the immutable image with Trivy |
 | `deploy.yaml` | Resolves configuration and database outputs, deploys the shared CloudFormation service stack, waits for stability, and writes summaries/events |
