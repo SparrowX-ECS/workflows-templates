@@ -4,7 +4,7 @@ Reusable workflow: `.github/workflows/source-security-scan.yaml`
 
 ## Purpose
 
-Combines Trivy secret scanning and runtime-aware Semgrep SAST into one reusable workflow. Findings are reported and uploaded; blocking decisions are made by `ci-quality-gate.yaml`.
+Combines Trivy secret scanning and runtime-aware Semgrep SAST into one reusable workflow. Findings are reported and uploaded; blocking decisions are made by `pr-quality-gate.yaml`.
 
 ## Usage
 
