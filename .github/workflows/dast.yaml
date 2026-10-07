@@ -1,0 +1,197 @@
+name: DAST
+
+on:
+  workflow_call:
+    inputs:
+      runtime:
+        description: Application runtime to scan
+        required: true
+        type: string
+      base-url:
+        description: Base URL of the deployed application to scan
+        required: true
+        type: string
+      api-spec-path:
+        description: OpenAPI path used for Python API scans
+        required: false
+        default: /openapi.json
+        type: string
+    outputs:
+      artifact-name:
+        description: DAST report artifact
+        value: ${{ jobs.dast.outputs.artifact-name }}
+      findings:
+        description: Number of DAST findings in the normalized report
+        value: ${{ jobs.dast.outputs.findings }}
+      scan-status:
+        description: "Scanner result: passed, findings, or error"
+        value: ${{ jobs.dast.outputs.scan-status }}
+
+permissions:
+  contents: read
+
+env:
+  BASE_URL: ${{ inputs.base-url }}
+  API_SPEC_PATH: ${{ inputs.api-spec-path }}
+
+jobs:
+  dast:
+    name: Dynamic Application Security Test
+    runs-on: ubuntu-latest
+
+    outputs:
+      artifact-name: ${{ steps.artifact-name.outputs.artifact-name }}
+      findings: ${{ steps.report.outputs.findings }}
+      scan-status: ${{ steps.report.outputs.scan-status }}
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+
+      - name: Prepare report directory
+        run: |
+          mkdir -p dast-reports
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install OWASP ZAP
+        env:
+          ZAP_VERSION: 2.17.0
+          ZAP_SHA256: efe799aaa3627db683b43f00c9c210aea0b75c00cc8f0a0f0434d12bb3ddde5a
+        run: |
+          ZAP_ARCHIVE="ZAP_${ZAP_VERSION}_Linux.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "/tmp/$ZAP_ARCHIVE" \
+            "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/$ZAP_ARCHIVE"
+          echo "$ZAP_SHA256  /tmp/$ZAP_ARCHIVE" | sha256sum --check
+          tar -xzf "/tmp/$ZAP_ARCHIVE"
+          echo "ZAP_HOME=$PWD/ZAP_${ZAP_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Run runtime-specific ZAP scan
+        id: scan
+        continue-on-error: true
+        run: |
+          SCAN_EXIT=0
+
+          case "${{ inputs.runtime }}" in
+            python)
+              TARGET_URL="${BASE_URL%/}/${API_SPEC_PATH#/}"
+              SCAN_MODE="ZAP API scan"
+              "$ZAP_HOME/zap-api-scan.py" \
+                -t "$TARGET_URL" \
+                -f openapi \
+                -J "$PWD/dast-reports/zap-results.json" \
+                -r "$PWD/dast-reports/zap-report.html" \
+                -I || SCAN_EXIT=$?
+              ;;
+            node)
+              TARGET_URL="${BASE_URL%/}"
+              SCAN_MODE="ZAP baseline scan"
+              "$ZAP_HOME/zap-baseline.py" \
+                -t "$TARGET_URL" \
+                -J "$PWD/dast-reports/zap-results.json" \
+                -r "$PWD/dast-reports/zap-report.html" \
+                -I || SCAN_EXIT=$?
+              ;;
+            *)
+              echo "Unsupported runtime: ${{ inputs.runtime }}"
+              echo "Supported runtimes: python, node"
+              exit 2
+              ;;
+          esac
+
+          echo "SCAN_EXIT=$SCAN_EXIT" >> "$GITHUB_ENV"
+          echo "TARGET_URL=$TARGET_URL" >> "$GITHUB_ENV"
+          echo "SCAN_MODE=$SCAN_MODE" >> "$GITHUB_ENV"
+
+      - name: Create DAST report
+        id: report
+        if: always()
+        run: |
+          STATUS=error
+          FINDINGS=0
+          HIGH=0
+          MEDIUM=0
+          LOW=0
+          INFORMATIONAL=0
+
+          if [ -s dast-reports/zap-results.json ] && \
+            jq empty dast-reports/zap-results.json; then
+            FINDINGS=$(jq '[.site[]?.alerts[]?] | length' dast-reports/zap-results.json)
+            HIGH=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) == 3)] | length' dast-reports/zap-results.json)
+            MEDIUM=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) == 2)] | length' dast-reports/zap-results.json)
+            LOW=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) == 1)] | length' dast-reports/zap-results.json)
+            INFORMATIONAL=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) == 0)] | length' dast-reports/zap-results.json)
+            STATUS=passed
+            if [ "$FINDINGS" -gt 0 ]; then
+              STATUS=findings
+            fi
+          fi
+
+          jq -n \
+            --arg status "$STATUS" \
+            --arg runtime "${{ inputs.runtime }}" \
+            --arg mode "${SCAN_MODE:-Unavailable}" \
+            --arg target "${TARGET_URL:-$BASE_URL}" \
+            --argjson findings "$FINDINGS" \
+            --argjson high "$HIGH" \
+            --argjson medium "$MEDIUM" \
+            --argjson low "$LOW" \
+            --argjson informational "$INFORMATIONAL" \
+            '{
+              schemaVersion: 1,
+              status: $status,
+              runtime: $runtime,
+              scan: {
+                mode: $mode,
+                target: $target,
+                findings: $findings,
+                high: $high,
+                medium: $medium,
+                low: $low,
+                informational: $informational,
+                report: "zap-results.json",
+                htmlReport: "zap-report.html"
+              }
+            }' > dast-reports/combined-dast-results.json
+
+          echo "findings=$FINDINGS" >> "$GITHUB_OUTPUT"
+          echo "scan-status=$STATUS" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## DAST"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Runtime | ${{ inputs.runtime }} |"
+            echo "| Scan | ${SCAN_MODE:-Unavailable} |"
+            echo "| Target | `${TARGET_URL:-$BASE_URL}` |"
+            echo "| Status | **$STATUS** |"
+            echo "| Findings | $FINDINGS ($HIGH HIGH, $MEDIUM MEDIUM, $LOW LOW) |"
+            echo
+            echo "Report artifact: dast-${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$STATUS" = error ]; then
+            exit 1
+          fi
+
+      - name: Upload DAST reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-${{ github.run_id }}
+          path: |
+            dast-reports/combined-dast-results.json
+            dast-reports/zap-results.json
+            dast-reports/zap-report.html
+          if-no-files-found: error
+
+      - name: Set report artifact output
+        id: artifact-name
+        if: always()
+        run: echo "artifact-name=dast-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
