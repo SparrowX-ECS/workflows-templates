@@ -115,6 +115,12 @@ jobs:
 
           skopeo --version
 
+      - name: Install ORAS
+        run: |
+          sudo apt-get install -y oras
+
+          oras version
+
       - name: Login to ECR
         run: |
           ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
