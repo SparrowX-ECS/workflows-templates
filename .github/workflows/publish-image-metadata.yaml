@@ -15,6 +15,11 @@ on:
         description: Image tag to promote
         required: true
         type: string
+      image-uri:
+        description: Full immutable image URI; when omitted, it is derived from the resolved digest for legacy callers
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -22,8 +27,9 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ENV_PARAMS_FILE: ${{ inputs.env-params-file }} 
+  ENV_PARAMS_FILE: ${{ inputs.env-params-file }}
   IMAGE_TAG: ${{ inputs.image-tag }}
+  INPUT_IMAGE_URI: ${{ inputs.image-uri }}
 
 jobs:
   publish:
@@ -45,7 +51,7 @@ jobs:
 
           ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           echo "ECR_REGISTRY=$ECR_REGISTRY" >> "$GITHUB_ENV"
-          
+
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -69,6 +75,19 @@ jobs:
 
           echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> "$GITHUB_ENV"
 
+          if [ -n "$INPUT_IMAGE_URI" ]; then
+            EXPECTED_IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME@$IMAGE_DIGEST"
+            if [ "$INPUT_IMAGE_URI" != "$EXPECTED_IMAGE_URI" ]; then
+              echo "The supplied immutable image URI does not match the image tag's ECR digest."
+              echo "Expected: $EXPECTED_IMAGE_URI"
+              echo "Received: $INPUT_IMAGE_URI"
+              exit 1
+            fi
+            echo "IMAGE_URI=$INPUT_IMAGE_URI" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME@$IMAGE_DIGEST" >> "$GITHUB_ENV"
+          fi
+
       - name: Create image metadata
         run: |
           cat > image-metadata.json <<EOF
@@ -79,7 +98,7 @@ jobs:
               "repository": "$ECR_REPOSITORY_FULL_NAME",
               "tag": "$IMAGE_TAG",
               "digest": "$IMAGE_DIGEST",
-              "uri": "$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME:$IMAGE_TAG"
+              "uri": "$IMAGE_URI"
             },
             "source": {
               "commit": "${{ github.sha }}",
@@ -116,6 +135,7 @@ jobs:
             echo "| ECR repository | \`$ECR_REPOSITORY_FULL_NAME\` |"
             echo "| Image tag | \`$IMAGE_TAG\` |"
             echo "| Image digest | \`$IMAGE_DIGEST\` |"
+            echo "| Image URI | \`$IMAGE_URI\` |"
             echo "| Security scan | Passed |"
             echo "| SSM Parameter | \`${{ inputs.ssm-parameter-path }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
