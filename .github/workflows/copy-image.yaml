@@ -50,8 +50,8 @@ jobs:
 
     
     outputs:
-      image-tag: ${{ steps.copy.outputs.image-tag }}
-      image-uri: ${{ steps.copy.outputs.target-image-uri }}
+      image-tag: ${{ steps.publish-output.outputs.image-tag }}
+      image-uri: ${{ steps.publish-output.outputs.image-uri }}
 
     steps:
 
@@ -196,7 +196,6 @@ jobs:
           
       - name: Verify promoted image
         id: verify
-        if: steps.image.outputs.exists != 'true'
         run: |
           echo "Verifying image in target ECR..."
 
@@ -218,6 +217,13 @@ jobs:
           fi
 
           echo "Image promotion verified successfully."
+
+      - name: Publish copied image outputs
+        id: publish-output
+        run: |
+          ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image-uri=$ECR_REGISTRY/$TARGET_ECR_REPOSITORY@$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Add promotion summary
         if: always()
