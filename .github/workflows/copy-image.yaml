@@ -22,6 +22,15 @@ on:
         description: ECS parameters file for the target environment
         required: true
         type: string
+    # Outputs refer to image values in the Prod ECR repo after copying
+    # Image tag is the same, it's added to the outputs to be used by consecutive jobs
+    outputs:
+      image-tag:
+        description: Image tag
+        value: ${{ jobs.copy-image.outputs.image-tag }}
+      image-uri:
+        description: Full immutable image URI
+        value: ${{ jobs.copy-image.outputs.image-uri }}
 
 permissions:
   contents: read
@@ -38,6 +47,11 @@ jobs:
   copy-image:
     name: Copy Image to Target ECR
     runs-on: ubuntu-latest
+
+    
+    outputs:
+      image-tag: ${{ steps.copy.outputs.image-tag }}
+      image-uri: ${{ steps.copy.outputs.target-image-uri }}
 
     steps:
 
@@ -135,6 +149,7 @@ jobs:
           fi
 
       - name: Copy image to target ECR
+        id: copy
         if: steps.image.outputs.exists != 'true'
         run: |
           ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -153,7 +168,13 @@ jobs:
 
           echo "Image copied successfully."
 
+          TARGET_IMAGE_URI = "$ECR_REGISTRY/$TARGET_ECR_REPOSITORY@$IMAGE_DIGEST"
+          echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "target-image-uri=$TARGET_IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+
       - name: Verify promoted image
+        id: verify
         if: steps.image.outputs.exists != 'true'
         run: |
           echo "Verifying image in target ECR..."
