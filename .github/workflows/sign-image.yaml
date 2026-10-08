@@ -15,6 +15,9 @@ on:
       status:
         description: Image signing status
         value: ${{ jobs.sign-image.outputs.status }}
+      image-uri:
+        description: Full Immutable Image URI
+        value: ${{ jobs.sign-image.outputs.image-uri }}
 
 permissions:
   contents: read
@@ -32,6 +35,7 @@ jobs:
 
     outputs:
       status: ${{ steps.summary.outputs.status }}
+      image-uri: ${{ steps.image.outputs.uri }}
 
     steps:
       - name: Checkout application
