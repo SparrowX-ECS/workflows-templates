@@ -130,7 +130,7 @@ jobs:
         run: docker push "$ECR_REGISTRY/$ECR_REPOSITORY_FULL_NAME:$IMAGE_TAG"
 
       - name: Add build summary
-        if: always()
+        if: inputs.authoritative-build
         run: |
           ECR_REPOSITORY="${ECR_REPOSITORY_FULL_NAME:-Unavailable}"
           IMAGE_TAG="${{ steps.image-tag.outputs.image-tag || 'Unavailable' }}"
