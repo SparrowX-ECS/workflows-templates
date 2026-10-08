@@ -82,9 +82,14 @@ jobs:
           semgrep scan \
             "${CONFIGS[@]}" \
             --metrics=off \
+            --no-git-ignore \
+            --exclude .cache \
+            --exclude source-security-reports \
             --json \
+            --verbose\
             --output source-security-reports/semgrep-results.json \
-            .
+            . \
+            tests/
 
       - name: Create source security report
         id: report
