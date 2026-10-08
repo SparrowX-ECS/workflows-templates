@@ -168,11 +168,32 @@ jobs:
 
           echo "Image copied successfully."
 
-          TARGET_IMAGE_URI = "$ECR_REGISTRY/$TARGET_ECR_REPOSITORY@$IMAGE_DIGEST"
+          TARGET_IMAGE_URI="$ECR_REGISTRY/$TARGET_ECR_REPOSITORY@$IMAGE_DIGEST"
           echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "target-image-uri=$TARGET_IMAGE_URI" >> "$GITHUB_OUTPUT"
 
+      - name: Copy image signature
+        if: steps.image.outputs.exists != 'true'
+        run: |
+          ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
+          SOURCE_IMAGE="$ECR_REGISTRY/$SOURCE_ECR_REPOSITORY@$IMAGE_DIGEST"
+          TARGET_IMAGE="$ECR_REGISTRY/$TARGET_ECR_REPOSITORY@$IMAGE_DIGEST"
+
+          echo "Copying Cosign signature..."
+          echo "Source: $SOURCE_IMAGE"
+          echo "Target: $TARGET_IMAGE"
+
+          oras discover "$SOURCE_IMAGE"
+
+          # Copy the Cosign signature/referrers from source to target.
+          oras cp \
+            "$SOURCE_IMAGE" \
+            "$TARGET_IMAGE" \
+            --recursive
+
+          echo "Cosign signature copied successfully."
+          
       - name: Verify promoted image
         id: verify
         if: steps.image.outputs.exists != 'true'
