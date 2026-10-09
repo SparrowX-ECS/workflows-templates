@@ -169,7 +169,7 @@ jobs:
             echo "|---|---|"
             echo "| Runtime | ${{ inputs.runtime }} |"
             echo "| Scan | ${SCAN_MODE:-Unavailable} |"
-            echo "| Target | `${TARGET_URL:-$BASE_URL}` |"
+            echo "| Target | ${TARGET_URL:-$BASE_URL} |"
             echo "| Status | **$STATUS** |"
             echo "| Findings | $FINDINGS ($HIGH HIGH, $MEDIUM MEDIUM, $LOW LOW) |"
             echo
