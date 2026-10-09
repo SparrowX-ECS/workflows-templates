@@ -57,7 +57,7 @@ jobs:
         if: inputs.runtime == 'python'
         uses: zaproxy/action-api-scan@v0.10.0
         with:
-          target: ${{ inputs.base-url }}/${{ inputs.api-spec-path }}
+          target: ${{ inputs.base-url }}${{ inputs.api-spec-path }}
           format: openapi
           allow_issue_writing: false
           fail_action: false
