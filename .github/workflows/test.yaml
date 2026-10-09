@@ -80,7 +80,7 @@ jobs:
           exit 1
 
       - name: Run tests
-        run: pytest
+        run: pytest tests
 
   node-test:
     name: Node.js

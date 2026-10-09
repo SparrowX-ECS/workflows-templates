@@ -90,6 +90,4 @@ dast-reports/
 
 ## Tool and runtime behavior
 
-The workflow installs the pinned OWASP ZAP `2.17.0` Linux release and runs it directly on the GitHub-hosted runner. Java 17 is configured with `actions/setup-java`. Python uses `zap-api-scan.py` with OpenAPI input; Node uses `zap-baseline.py` against the web URL. Findings are report-only in this workflow; [`dev-quality-gate.yaml`](dev-quality-gate.md) applies blocking thresholds.
-
-API testing is not implemented yet. When it is added, it should publish a separate artifact and report contract rather than being mixed into the ZAP report.
+The workflow uses the pinned ZAP action versions in `dast.yaml`. Python uses the ZAP API scan with OpenAPI input; Node uses the ZAP baseline scan against the web URL. Findings are report-only in this workflow; [`dev-quality-gate.yaml`](dev-quality-gate.md) applies blocking thresholds. API testing is a separate workflow documented in [`api-test.md`](api-test.md).

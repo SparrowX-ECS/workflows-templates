@@ -11,6 +11,14 @@ on:
         description: Repository path to the application security policy file
         required: true
         type: string
+      smoke-test-status:
+        description: Status returned by the smoke-test workflow
+        required: true
+        type: string
+      api-test-status:
+        description: Status returned by the API-test workflow
+        required: true
+        type: string
     outputs:
       status:
         description: Development security quality gate status
@@ -81,7 +89,19 @@ jobs:
             echo "DAST_FINDINGS=0"
             echo "DAST_HIGH=0"
             echo "DAST_MEDIUM=0"
+            echo "SMOKE_TEST_STATUS=${{ inputs.smoke-test-status }}"
+            echo "API_TEST_STATUS=${{ inputs.api-test-status }}"
           } >> "$GITHUB_ENV"
+
+      - name: Evaluate deployment tests
+        if: always()
+        run: |
+          if [ "$SMOKE_TEST_STATUS" != passed ]; then
+            echo "Smoke test status was '$SMOKE_TEST_STATUS'; expected passed." >> "$RESULTS_DIR/failures.txt"
+          fi
+          if [ "$API_TEST_STATUS" != passed ]; then
+            echo "API test status was '$API_TEST_STATUS'; expected passed." >> "$RESULTS_DIR/failures.txt"
+          fi
 
       - name: Evaluate DAST
         if: always()
@@ -133,10 +153,10 @@ jobs:
         run: |
           if [ "$POLICY_STATUS" != loaded ] || [ -s "$RESULTS_DIR/failures.txt" ]; then
             GATE_STATUS=failed
-            GATE_RESULT="**FAILED** — DAST policy requirements were not satisfied."
+            GATE_RESULT="**FAILED** — deployment tests and/or DAST policy requirements were not satisfied."
           else
             GATE_STATUS=passed
-            GATE_RESULT="**PASSED** — DAST policy requirements were satisfied."
+            GATE_RESULT="**PASSED** — smoke tests, API tests, and DAST policy requirements were satisfied."
           fi
           echo "status=$GATE_STATUS" >> "$GITHUB_OUTPUT"
 
@@ -152,6 +172,8 @@ jobs:
             echo
             echo "| Control | Status | Findings | Report |"
             echo "|---|---|---:|---|"
+            echo "| Smoke test | ${SMOKE_TEST_STATUS:-failed} | — | — |"
+            echo "| API tests | ${API_TEST_STATUS:-failed} | — | — |"
             echo "| DAST | ${DAST_STATUS:-error} | ${DAST_FINDINGS:-0} (${DAST_HIGH:-0} HIGH, ${DAST_MEDIUM:-0} MEDIUM) | [combined-dast-results.json]($ARTIFACTS_URL) |"
             echo
             if [ "$GATE_STATUS" = failed ]; then
