@@ -19,6 +19,11 @@ on:
         description: Status returned by the API-test workflow
         required: true
         type: string
+      api-test-blocking:
+        description: Whether an API-test failure blocks the development quality gate
+        required: false
+        default: true
+        type: boolean
     outputs:
       status:
         description: Development security quality gate status
@@ -29,6 +34,7 @@ permissions:
 
 env:
   RESULTS_DIR: dev-quality-gate-results
+  API_TEST_BLOCKING: ${{ inputs.api-test-blocking }}
 
 jobs:
   dev-quality-gate:
@@ -84,6 +90,7 @@ jobs:
         run: |
           mkdir -p "$RESULTS_DIR"
           : > "$RESULTS_DIR/failures.txt"
+          : > "$RESULTS_DIR/warnings.txt"
           {
             echo "DAST_STATUS=error"
             echo "DAST_FINDINGS=0"
@@ -91,6 +98,7 @@ jobs:
             echo "DAST_MEDIUM=0"
             echo "SMOKE_TEST_STATUS=${{ inputs.smoke-test-status }}"
             echo "API_TEST_STATUS=${{ inputs.api-test-status }}"
+            echo "API_TEST_BLOCKING=${{ inputs.api-test-blocking }}"
           } >> "$GITHUB_ENV"
 
       - name: Evaluate deployment tests
@@ -100,7 +108,11 @@ jobs:
             echo "Smoke test status was '$SMOKE_TEST_STATUS'; expected passed." >> "$RESULTS_DIR/failures.txt"
           fi
           if [ "$API_TEST_STATUS" != passed ]; then
-            echo "API test status was '$API_TEST_STATUS'; expected passed." >> "$RESULTS_DIR/failures.txt"
+            if [ "$API_TEST_BLOCKING" = true ]; then
+              echo "API test status was '$API_TEST_STATUS'; expected passed." >> "$RESULTS_DIR/failures.txt"
+            else
+              echo "API test status was '$API_TEST_STATUS'; recorded as advisory." >> "$RESULTS_DIR/warnings.txt"
+            fi
           fi
 
       - name: Evaluate DAST
@@ -153,10 +165,10 @@ jobs:
         run: |
           if [ "$POLICY_STATUS" != loaded ] || [ -s "$RESULTS_DIR/failures.txt" ]; then
             GATE_STATUS=failed
-            GATE_RESULT="**FAILED** — deployment tests and/or DAST policy requirements were not satisfied."
+            GATE_RESULT="**FAILED** — blocking deployment tests and/or DAST policy requirements were not satisfied."
           else
             GATE_STATUS=passed
-            GATE_RESULT="**PASSED** — smoke tests, API tests, and DAST policy requirements were satisfied."
+            GATE_RESULT="**PASSED** — blocking checks and DAST policy requirements were satisfied."
           fi
           echo "status=$GATE_STATUS" >> "$GITHUB_OUTPUT"
 
@@ -173,9 +185,17 @@ jobs:
             echo "| Control | Status | Findings | Report |"
             echo "|---|---|---:|---|"
             echo "| Smoke test | ${SMOKE_TEST_STATUS:-failed} | — | — |"
-            echo "| API tests | ${API_TEST_STATUS:-failed} | — | — |"
+            API_TEST_MODE=$([ "$API_TEST_BLOCKING" = true ] && echo blocking || echo advisory)
+            echo "| API tests | ${API_TEST_STATUS:-failed} | $API_TEST_MODE | — |"
             echo "| DAST | ${DAST_STATUS:-error} | ${DAST_FINDINGS:-0} (${DAST_HIGH:-0} HIGH, ${DAST_MEDIUM:-0} MEDIUM) | [combined-dast-results.json]($ARTIFACTS_URL) |"
             echo
+            if [ -s "$RESULTS_DIR/warnings.txt" ]; then
+              echo "### Advisory warnings"
+              echo
+              while IFS= read -r warning; do
+                echo "- $warning"
+              done < "$RESULTS_DIR/warnings.txt"
+            fi
             if [ "$GATE_STATUS" = failed ]; then
               echo "### Failure reasons"
               echo

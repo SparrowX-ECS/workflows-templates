@@ -16,8 +16,8 @@ Reusable GitHub Actions workflows for the SparrowX sample services. SparrowX is 
 | `verify-image-signature.yaml` | Verifies the image signature and trusted Sigstore certificate identity |
 | `pr-quality-gate.yaml` | Applies PR security policy to source-security reports for secret scanning and SAST |
 | `ci-quality-gate.yaml` | Applies CI security policy to image-security reports for vulnerabilities and SBOM |
-| `dev-quality-gate.yaml` | Applies development DAST thresholds and requires smoke/API test success |
-| `prod-quality-gate.yaml` | Reports production smoke/API validation for publish-or-rollback branching |
+| `dev-quality-gate.yaml` | Applies development DAST thresholds and evaluates blocking or advisory smoke/API tests |
+| `prod-quality-gate.yaml` | Reports production smoke/API validation, with configurable API-test blocking, for publish-or-rollback branching |
 | `deploy.yaml` | Resolves configuration and database outputs, deploys the shared CloudFormation service stack, waits for stability, and writes summaries/events |
 | `smoke-test.yaml` | Calls the configured environment URL and smoke-test path |
 | `api-test.yaml` | Runs deployed Python or Node API tests and reports status and counts |
@@ -40,6 +40,8 @@ manual       → resolve candidate → copy by digest → deploy prod → smoke 
 ```
 
 This implements **Build Once, Promote Many**. Pull requests use a non-authoritative build for validation. After merge, the caller explicitly sets `authoritative-build: true` to publish the image to ECR. Production receives the same artifact built and tested for development; it is not rebuilt for promotion.
+
+Deployment test policy is configured on the quality-gate caller, not in `app-sec-policy.yaml`. Smoke tests are always blocking. API tests are blocking by default; set `api-test-blocking: false` when the tests exercise external microservices and should remain visible as advisory warnings without blocking deployment.
 
 ## Rollback support
 

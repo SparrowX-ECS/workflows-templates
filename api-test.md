@@ -4,7 +4,7 @@ Reusable workflow: `.github/workflows/api-test.yaml`
 
 ## Purpose
 
-Runs repository-owned API tests against a deployed service. Test failures are reported through outputs and the job summary; the test command itself does not fail the job. A caller can use the `status` output in a later quality gate.
+Runs repository-owned API tests against a deployed service. Test failures are reported through outputs and the job summary; the test command itself does not fail the job. A caller can use the `status` output in a later quality gate, which can classify the result as blocking or advisory with its `api-test-blocking` input.
 
 ## Usage
 
