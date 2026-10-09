@@ -11,7 +11,7 @@ Combines Trivy secret scanning and runtime-aware Semgrep SAST into one reusable 
 ```yaml
 jobs:
   source-security-scan:
-    uses: SparrowX-ECS/workflow-templates/.github/workflows/source-security-scan.yaml@<version>
+    uses: SparrowX-ECS/workflows-templates/.github/workflows/source-security-scan.yaml@<version>
     with:
       runtime: python
 ```

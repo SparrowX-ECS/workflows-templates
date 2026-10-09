@@ -12,7 +12,7 @@ Scans an immutable commit-tagged ECR image with Trivy and generates a CycloneDX 
 jobs:
   image-security-scan:
     needs: build
-    uses: SparrowX-ECS/workflow-templates/.github/workflows/image-security-scan.yaml@<version>
+    uses: SparrowX-ECS/workflows-templates/.github/workflows/image-security-scan.yaml@<version>
     with:
       env-params-file: ecs-parameters-dev.yaml
       image-tag: ${{ needs.build.outputs.image-tag }}

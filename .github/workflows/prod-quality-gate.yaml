@@ -1,0 +1,56 @@
+name: Production Quality Gate
+
+on:
+  workflow_call:
+    inputs:
+      smoke-test-status:
+        description: Status returned by the smoke-test workflow
+        required: true
+        type: string
+      api-test-status:
+        description: Status returned by the API-test workflow
+        required: true
+        type: string
+    outputs:
+      status:
+        description: Production validation status
+        value: ${{ jobs.prod-quality-gate.outputs.status }}
+
+permissions:
+  contents: read
+
+jobs:
+  prod-quality-gate:
+    name: Production Quality Gate
+    runs-on: ubuntu-latest
+
+    outputs:
+      status: ${{ steps.evaluate.outputs.status }}
+
+    steps:
+      - name: Evaluate production tests
+        id: evaluate
+        env:
+          SMOKE_STATUS: ${{ inputs.smoke-test-status }}
+          API_STATUS: ${{ inputs.api-test-status }}
+        run: |
+          if [ "$SMOKE_STATUS" = passed ] && [ "$API_STATUS" = passed ]; then
+            GATE_STATUS=passed
+            GATE_RESULT="**PASSED** — smoke and API tests passed."
+          else
+            GATE_STATUS=failed
+            GATE_RESULT="**FAILED** — smoke and API tests must both pass."
+          fi
+
+          echo "status=$GATE_STATUS" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Production Quality Gate"
+            echo
+            echo "$GATE_RESULT"
+            echo
+            echo "| Check | Status |"
+            echo "|---|---|---:|"
+            echo "| Smoke test | ${SMOKE_STATUS:-failed} |"
+            echo "| API tests | ${API_STATUS:-failed} |"
+          } >> "$GITHUB_STEP_SUMMARY"
