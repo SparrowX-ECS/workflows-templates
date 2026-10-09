@@ -52,62 +52,63 @@ jobs:
         run: |
           mkdir -p dast-reports
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Run ZAP API scan
+        id: api-scan
+        if: inputs.runtime == 'python'
+        uses: zaproxy/action-api-scan@v0.10.0
         with:
-          distribution: temurin
-          java-version: '17'
+          target: ${{ inputs.base-url }}/${{ inputs.api-spec-path }}
+          format: openapi
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: dast-raw-${{ github.run_id }}
 
-      - name: Install OWASP ZAP
+      - name: Run ZAP baseline scan
+        id: baseline-scan
+        if: inputs.runtime == 'node'
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: ${{ inputs.base-url }}
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: dast-raw-${{ github.run_id }}
+
+      - name: Set scan metadata
+        if: always()
         env:
-          ZAP_VERSION: 2.17.0
-          ZAP_SHA256: efe799aaa3627db683b43f00c9c210aea0b75c00cc8f0a0f0434d12bb3ddde5a
+          RUNTIME: ${{ inputs.runtime }}
+          BASE_URL: ${{ inputs.base-url }}
+          API_SPEC_PATH: ${{ inputs.api-spec-path }}
+          API_SCAN_OUTCOME: ${{ steps.api-scan.outcome }}
+          BASELINE_SCAN_OUTCOME: ${{ steps.baseline-scan.outcome }}
         run: |
-          ZAP_ARCHIVE="ZAP_${ZAP_VERSION}_Linux.tar.gz"
-          curl --fail --location --retry 3 \
-            --output "/tmp/$ZAP_ARCHIVE" \
-            "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/$ZAP_ARCHIVE"
-          echo "$ZAP_SHA256  /tmp/$ZAP_ARCHIVE" | sha256sum --check
-          tar -xzf "/tmp/$ZAP_ARCHIVE"
-          echo "ZAP_HOME=$PWD/ZAP_${ZAP_VERSION}" >> "$GITHUB_ENV"
+          if [ "$RUNTIME" = "python" ]; then
+            echo "SCAN_MODE=ZAP API scan" >> "$GITHUB_ENV"
+            echo "TARGET_URL=${BASE_URL%/}/${API_SPEC_PATH#/}" >> "$GITHUB_ENV"
+            echo "SCAN_EXIT=$([ "$API_SCAN_OUTCOME" = "success" ] && echo 0 || echo 1)" >> "$GITHUB_ENV"
+          else
+            echo "SCAN_MODE=ZAP baseline scan" >> "$GITHUB_ENV"
+            echo "TARGET_URL=${BASE_URL%/}" >> "$GITHUB_ENV"
+            echo "SCAN_EXIT=$([ "$BASELINE_SCAN_OUTCOME" = "success" ] && echo 0 || echo 1)" >> "$GITHUB_ENV"
+          fi
 
-      - name: Run runtime-specific ZAP scan
-        id: scan
+      - name: Download ZAP reports
+        if: always()
         continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: dast-raw-${{ github.run_id }}
+          path: dast-reports/raw
+
+      - name: Normalize ZAP report filenames
+        if: always()
         run: |
-          SCAN_EXIT=0
+          [ ! -f dast-reports/raw/report_json.json ] || \
+            cp dast-reports/raw/report_json.json dast-reports/zap-results.json
 
-          case "${{ inputs.runtime }}" in
-            python)
-              TARGET_URL="${BASE_URL%/}/${API_SPEC_PATH#/}"
-              SCAN_MODE="ZAP API scan"
-              "$ZAP_HOME/zap-api-scan.py" \
-                -t "$TARGET_URL" \
-                -f openapi \
-                -J "$PWD/dast-reports/zap-results.json" \
-                -r "$PWD/dast-reports/zap-report.html" \
-                -I || SCAN_EXIT=$?
-              ;;
-            node)
-              TARGET_URL="${BASE_URL%/}"
-              SCAN_MODE="ZAP baseline scan"
-              "$ZAP_HOME/zap-baseline.py" \
-                -t "$TARGET_URL" \
-                -J "$PWD/dast-reports/zap-results.json" \
-                -r "$PWD/dast-reports/zap-report.html" \
-                -I || SCAN_EXIT=$?
-              ;;
-            *)
-              echo "Unsupported runtime: ${{ inputs.runtime }}"
-              echo "Supported runtimes: python, node"
-              exit 2
-              ;;
-          esac
-
-          echo "SCAN_EXIT=$SCAN_EXIT" >> "$GITHUB_ENV"
-          echo "TARGET_URL=$TARGET_URL" >> "$GITHUB_ENV"
-          echo "SCAN_MODE=$SCAN_MODE" >> "$GITHUB_ENV"
-
+          [ ! -f dast-reports/raw/report_html.html ] || \
+            cp dast-reports/raw/report_html.html dast-reports/zap-report.html
+            
       - name: Create DAST report
         id: report
         if: always()
