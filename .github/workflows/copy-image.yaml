@@ -115,11 +115,14 @@ jobs:
 
           skopeo --version
 
-      - name: Install ORAS
-        run: |
-          sudo apt-get install -y oras
 
-          oras version
+      - name: Install ORAS
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.3.4
+
+      - name: Verify ORAS
+        run: oras version
 
       - name: Login to ECR
         run: |
