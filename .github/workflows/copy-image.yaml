@@ -156,7 +156,7 @@ jobs:
 
           if [ "$describe_status" -eq 0 ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Image already exists; skipping."
+            echo "Image already exists."
           elif grep -q "ImageNotFoundException" <<< "$describe_output"; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "Image does not exist; it will be copied."
@@ -189,8 +189,49 @@ jobs:
           echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "target-image-uri=$TARGET_IMAGE_URI" >> "$GITHUB_OUTPUT"
 
+      - name: Check target image signature
+        id: signature
+        run: |
+          ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          TARGET_DIGEST="$(aws ecr describe-images \
+            --repository-name "$TARGET_ECR_REPOSITORY" \
+            --image-ids "imageTag=$IMAGE_TAG" \
+            --region "$AWS_REGION" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+
+          if [ -z "$TARGET_DIGEST" ] || [ "$TARGET_DIGEST" = "None" ]; then
+            echo "Target image tag '$IMAGE_TAG' was not found after image copy."
+            exit 1
+          fi
+
+          if [ "$TARGET_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "Target image digest does not match the expected source digest."
+            echo "Expected: $IMAGE_DIGEST"
+            echo "Target:   $TARGET_DIGEST"
+            exit 1
+          fi
+
+          TARGET_IMAGE="$ECR_REGISTRY/$TARGET_ECR_REPOSITORY@$TARGET_DIGEST"
+          echo "Inspecting signature referrers for: $TARGET_IMAGE"
+
+          DISCOVER_OUTPUT="$(oras discover \
+            --format json \
+            "$TARGET_IMAGE")"
+
+          if jq -e \
+            'any(.manifests[]?; .artifactType == "application/vnd.dev.cosign.artifact.sig.v1+json")' \
+            <<< "$DISCOVER_OUTPUT" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Cosign signature already exists; skipping signature copy."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Cosign signature is missing; it will be copied."
+          fi
+
       - name: Copy image signature
-        if: steps.image.outputs.exists != 'true'
+        if: steps.signature.outputs.exists != 'true'
         run: |
           ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
