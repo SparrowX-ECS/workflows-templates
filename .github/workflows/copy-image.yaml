@@ -128,9 +128,17 @@ jobs:
         run: |
           ECR_REGISTRY="${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-          aws ecr get-login-password \
-            --region "$AWS_REGION" |
+          ECR_PASSWORD="$(aws ecr get-login-password --region "$AWS_REGION")"
+
+          # Skopeo and ORAS use different credential stores by default.
+          printf '%s' "$ECR_PASSWORD" |
             skopeo login \
+              --username AWS \
+              --password-stdin \
+              "$ECR_REGISTRY"
+
+          printf '%s' "$ECR_PASSWORD" |
+            oras login \
               --username AWS \
               --password-stdin \
               "$ECR_REGISTRY"
